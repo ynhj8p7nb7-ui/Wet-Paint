@@ -1,0 +1,53 @@
+# Runs on every push and pull request: vets and tests the code on real
+# Windows and macOS. Pushes to main also publish a built WetPaint.exe in the
+# run's "Artifacts" section. Pull requests are tested but never produce a
+# downloadable exe, so nobody can hand pilots a build of unreviewed code.
+name: build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+# Read-only: builds can't push, comment, or touch anything in the repo.
+permissions:
+  contents: read
+
+env:
+  VERSION: "1.3.0"
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Vet
+        run: go vet ./...
+      - name: Test
+        run: go test ./...
+      - name: Embed icon, version info and manifest
+        run: go run ./tools/mkicon -version ${{ env.VERSION }} -out rsrc_windows_amd64.syso assets/icon-16.png assets/icon-24.png assets/icon-32.png assets/icon-48.png assets/icon-64.png assets/icon-128.png assets/icon-256.png
+      - name: Build
+        run: go build -trimpath -ldflags "-X main.version=${{ env.VERSION }}" -o dist/WetPaint.exe .
+      - name: Fingerprint
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        shell: pwsh
+        run: (Get-FileHash dist/WetPaint.exe -Algorithm SHA256).Hash.ToLower() + "  WetPaint.exe" | Tee-Object dist/WetPaint.exe.sha256.txt
+      - uses: actions/upload-artifact@v4
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        with:
+          name: WetPaint-windows
+          path: dist/
+
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go vet ./...
+      - run: go test ./...

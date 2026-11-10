@@ -1,0 +1,606 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wet Paint</title>
+<link rel="icon" type="image/png" href="/icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Saira:wdth,wght@100..125,400..800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --black:#08090a; --panel:#0f1114; --panel-2:#15181c; --line:#262a31; --line-2:#33373f;
+  --text:#edeeec; --paper:#cfd2d1; --dim:#8b9099; --dim-2:#5c6169;
+  --red:#a4181f; --red-bright:#d3222b; --amber:#c78f3c; --amber-bright:#e5a84d;
+  --green:#4f8a5b; --green-bright:#5fd27a;
+  --head:'Saira','Bahnschrift','Arial Narrow',sans-serif;
+  --body:'Saira','Segoe UI',system-ui,sans-serif;
+  --mono:'JetBrains Mono','Cascadia Mono','Consolas',monospace;
+}
+* { box-sizing:border-box; }
+html,body { margin:0; background:var(--black); color:var(--text); font-family:var(--body); font-size:14px; }
+body { min-height:100vh; display:flex; flex-direction:column; }
+button,input,select { font:inherit; color:inherit; }
+a { color:var(--amber-bright); }
+
+/* header */
+header { display:flex; align-items:center; gap:28px; padding:14px 28px; border-bottom:1px solid var(--line); background:linear-gradient(#0c0d0f,#08090a); position:sticky; top:0; z-index:5; }
+.brand { display:flex; align-items:center; gap:12px; }
+.brand .mark { width:46px; height:46px; display:block; filter:drop-shadow(0 0 10px rgba(199,143,60,.25)); }
+.brand b { font-family:var(--head); font-weight:800; letter-spacing:.18em; font-size:17px; display:block; line-height:1; }
+.brand small { font-family:var(--mono); font-size:10px; color:var(--dim); letter-spacing:.14em; }
+nav { display:flex; gap:4px; margin-left:auto; }
+nav button { background:none; border:0; padding:10px 14px; font-family:var(--head); font-weight:600; letter-spacing:.2em; font-size:12px; color:var(--dim); cursor:pointer; border-bottom:2px solid transparent; }
+nav button[aria-selected=true] { color:var(--text); border-bottom-color:var(--amber); }
+nav button:hover { color:var(--text); }
+
+main { flex:1; width:100%; max-width:1040px; margin:0 auto; padding:26px 28px 40px; }
+.tag { font-family:var(--mono); font-size:11px; letter-spacing:.16em; color:var(--amber); text-transform:uppercase; }
+h2 { font-family:var(--head); font-weight:700; letter-spacing:.14em; text-transform:uppercase; font-size:15px; margin:0; }
+
+/* status hero */
+.hero { display:grid; grid-template-columns:auto 1fr auto; gap:26px; align-items:center; padding:26px 28px; border:1px solid var(--line); background:radial-gradient(120% 140% at 0% 0%, #15181c 0%, #0c0d0f 60%); position:relative; overflow:hidden; }
+.hero::after { content:""; position:absolute; inset:0 0 auto 0; height:2px; background:var(--lamp,var(--dim-2)); opacity:.8; }
+.lamp { width:86px; height:86px; border-radius:50%; background:radial-gradient(circle at 35% 30%, color-mix(in srgb, var(--lamp) 70%, white 30%), var(--lamp) 45%, color-mix(in srgb, var(--lamp) 40%, black) 100%); box-shadow:0 0 0 6px #0b0c0e, 0 0 0 7px var(--line-2), 0 0 38px 4px color-mix(in srgb, var(--lamp) 55%, transparent); transition:all .4s; }
+.hero[data-state=green] { --lamp:var(--green-bright); }
+.hero[data-state=amber] { --lamp:var(--amber-bright); }
+.hero[data-state=red]   { --lamp:var(--red-bright); }
+.hero[data-state=grey]  { --lamp:#4a4f58; }
+.hero[data-state=busy] .lamp { animation:pulse 1.2s ease-in-out infinite; }
+.hero[data-state=busy] { --lamp:#6fa8ff; }
+@keyframes pulse { 50% { opacity:.45; } }
+.hero h1 { font-family:var(--head); font-weight:800; font-size:40px; letter-spacing:.08em; text-transform:uppercase; margin:4px 0 6px; line-height:1; }
+.hero p { margin:0; color:var(--paper); }
+.hero .meta { font-family:var(--mono); font-size:12px; color:var(--dim); margin-top:10px; }
+
+/* steps */
+.grid { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:18px; margin-top:18px; }
+.grid > *, .hero > * { min-width:0; }
+.card { border:1px solid var(--line); background:var(--panel); padding:18px 20px; }
+.card .head { display:flex; align-items:baseline; gap:12px; margin-bottom:14px; }
+.card .head .num { font-family:var(--mono); color:var(--red-bright); font-size:12px; }
+.card .head h2 { flex:1; }
+.row { display:flex; gap:8px; align-items:center; }
+.path { flex:1; min-width:0; font-family:var(--mono); font-size:12px; background:#0a0b0d; border:1px solid var(--line-2); padding:9px 10px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+input[type=text], select { flex:1; min-width:0; background:#0a0b0d; border:1px solid var(--line-2); padding:9px 10px; font-family:var(--mono); font-size:12px; outline:none; }
+input[type=text]:focus, select:focus { border-color:var(--amber); }
+.btn { background:var(--panel-2); border:1px solid var(--line-2); padding:9px 14px; cursor:pointer; font-family:var(--head); font-weight:600; letter-spacing:.14em; font-size:11px; text-transform:uppercase; white-space:nowrap; }
+.btn:hover:not(:disabled) { border-color:var(--paper); }
+.btn:disabled { opacity:.4; cursor:not-allowed; }
+.btn.primary { background:var(--red); border-color:var(--red-bright); font-size:15px; padding:16px 26px; letter-spacing:.22em; }
+.btn.primary:hover:not(:disabled) { background:var(--red-bright); border-color:#ff5a62; }
+.btn.ghost { background:none; }
+.hint { color:var(--dim); font-size:12.5px; margin:10px 0 0; line-height:1.5; }
+.hint code { font-family:var(--mono); font-size:11.5px; color:var(--paper); overflow-wrap:anywhere; }
+
+.dirs, .packs { display:flex; flex-direction:column; gap:6px; }
+.opt { display:flex; align-items:center; gap:12px; padding:10px 12px; border:1px solid var(--line); background:#0b0c0e; cursor:pointer; text-align:left; width:100%; }
+.opt:hover { border-color:var(--line-2); }
+.opt[aria-checked=true] { border-color:var(--amber); background:#16120b; }
+.opt .dot { width:12px; height:12px; border-radius:50%; border:1px solid var(--dim); flex:none; }
+.opt[aria-checked=true] .dot { background:var(--amber); border-color:var(--amber); box-shadow:0 0 8px var(--amber); }
+.opt .t { flex:1; min-width:0; }
+.opt .t b { display:block; font-family:var(--head); letter-spacing:.06em; font-weight:600; }
+.opt .t span { display:block; font-family:var(--mono); font-size:11px; color:var(--dim); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.pill { font-family:var(--mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase; padding:3px 7px; border:1px solid var(--line-2); color:var(--dim); white-space:nowrap; }
+.pill.ok { color:var(--green-bright); border-color:#2c5a36; }
+.pill.warn { color:var(--amber-bright); border-color:#6a4d22; }
+.pill.bad { color:#ff6b72; border-color:var(--red); }
+.empty { padding:16px; border:1px dashed var(--line-2); color:var(--dim); text-align:center; font-size:13px; line-height:1.6; }
+
+.actions { display:flex; gap:12px; align-items:center; margin-top:18px; padding:18px 20px; border:1px solid var(--line); background:var(--panel); }
+.actions .spacer { flex:1; }
+
+/* progress */
+.progress { margin-top:18px; border:1px solid var(--line); background:var(--panel); padding:16px 20px; display:none; }
+.progress.on { display:block; }
+.bar { height:8px; background:#0a0b0d; border:1px solid var(--line-2); margin:10px 0 8px; overflow:hidden; }
+.bar i { display:block; height:100%; width:0; background:linear-gradient(90deg,var(--red),var(--amber-bright)); transition:width .2s; }
+.progress .line { display:flex; justify-content:space-between; font-family:var(--mono); font-size:11.5px; color:var(--dim); gap:16px; }
+.progress .line span:first-child { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+/* results */
+.results { margin-top:18px; }
+.results .card + .card { margin-top:12px; }
+table { width:100%; border-collapse:collapse; }
+td, th { text-align:left; padding:8px 10px; border-bottom:1px solid var(--line); vertical-align:top; }
+th { font-family:var(--mono); font-size:10.5px; letter-spacing:.14em; color:var(--dim); font-weight:400; text-transform:uppercase; }
+td.mono { font-family:var(--mono); font-size:12px; color:var(--paper); }
+td small { display:block; color:var(--dim); font-family:var(--mono); font-size:11px; margin-top:3px; }
+details summary { cursor:pointer; color:var(--dim); font-family:var(--mono); font-size:12px; letter-spacing:.08em; padding:6px 0; }
+.list { margin:6px 0 0; padding:0; list-style:none; font-family:var(--mono); font-size:12px; }
+.list li { padding:5px 0; border-bottom:1px solid var(--line); display:flex; gap:10px; }
+.list li .sym { width:14px; flex:none; }
+.err { margin-top:18px; padding:14px 18px; border:1px solid var(--red); background:#1a0b0d; color:#ffb3b7; display:none; }
+.err.on { display:block; }
+.kv { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-bottom:14px; }
+.kv div { border:1px solid var(--line); padding:12px; background:#0b0c0e; }
+.kv b { display:block; font-family:var(--head); font-size:26px; font-weight:700; }
+.kv span { font-family:var(--mono); font-size:10.5px; letter-spacing:.12em; color:var(--dim); text-transform:uppercase; }
+.field { margin-bottom:14px; }
+.field label { display:block; font-family:var(--mono); font-size:11px; letter-spacing:.12em; color:var(--dim); text-transform:uppercase; margin-bottom:6px; }
+.check { display:flex; gap:10px; align-items:flex-start; cursor:pointer; color:var(--paper); }
+.check input { margin-top:3px; accent-color:var(--amber); }
+footer { padding:12px 28px; border-top:1px solid var(--line); font-family:var(--mono); font-size:10.5px; color:var(--dim-2); letter-spacing:.1em; display:flex; justify-content:space-between; }
+[hidden] { display:none !important; }
+details.manual { margin-top:18px; }
+.install { margin-top:14px; padding-top:12px; border-top:1px solid var(--line); display:flex; gap:10px; align-items:center; }
+.install .t { flex:1; min-width:0; }
+.install .t b { display:block; font-family:var(--mono); font-size:10.5px; letter-spacing:.14em; color:var(--dim); font-weight:400; text-transform:uppercase; }
+.install .t span { display:block; font-family:var(--mono); font-size:11.5px; color:var(--paper); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.pill.info { color:var(--paper); }
+details.manual > summary { cursor:pointer; font-family:var(--head); font-weight:600; letter-spacing:.16em; text-transform:uppercase; font-size:12px; color:var(--dim); padding:12px 0; list-style:none; }
+details.manual > summary::before { content:"▸ "; color:var(--amber); }
+details.manual[open] > summary::before { content:"▾ "; }
+.steps { list-style:none; margin:0 0 14px; padding:0; }
+.steps li { display:flex; justify-content:space-between; gap:12px; padding:9px 0; border-bottom:1px solid var(--line); font-family:var(--mono); font-size:12.5px; }
+.steps li span:last-child { color:var(--dim); }
+.big { font-family:var(--head); font-weight:700; font-size:20px; letter-spacing:.06em; text-transform:uppercase; margin:0 0 6px; }
+.online-actions { display:flex; flex-direction:column; gap:8px; }
+.online-actions .btn.primary { width:100%; }
+.linkbtn { background:none; border:0; padding:4px 0; color:var(--amber-bright); cursor:pointer; text-decoration:underline; font-size:12.5px; text-align:left; }
+.notice { margin-top:12px; padding:10px 12px; border:1px solid #6a4d22; background:#17120a; font-size:12.5px; color:var(--paper); }
+
+@media (max-width: 760px) {
+  .grid { grid-template-columns:minmax(0,1fr); }
+  .hero { grid-template-columns:auto 1fr; }
+  .hero .side { grid-column:1/-1; }
+  .kv { grid-template-columns:repeat(2,1fr); }
+  header { padding:12px 16px; gap:12px; flex-wrap:wrap; }
+  main { padding:18px 16px 32px; }
+}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">
+    <img class="mark" src="/icon.png" alt="" width="46" height="46">
+    <div><b>WET PAINT</b><small>CVW-0 // LIVERY MANAGER</small></div>
+  </div>
+  <nav role="tablist">
+    <button role="tab" data-tab="install" aria-selected="true">Install &amp; Verify</button>
+    <button role="tab" data-tab="build" aria-selected="false">Build Pack</button>
+  </nav>
+</header>
+
+<main>
+<!-- ============================================================ INSTALL -->
+<section id="tab-install">
+  <div class="hero" id="hero" data-state="grey">
+    <div class="lamp" aria-hidden="true"></div>
+    <div>
+      <div class="tag" id="heroTag">// Livery status</div>
+      <h1 id="heroTitle">Checking…</h1>
+      <p id="heroText">&nbsp;</p>
+      <div class="meta" id="heroMeta"></div>
+    </div>
+    <div class="side"><button class="btn ghost" id="btnScan">Verify now</button></div>
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <div class="head"><span class="num">01</span><h2>DCS folder</h2></div>
+      <div class="dirs" id="dirs"></div>
+      <div class="row" style="margin-top:8px"><button class="btn" id="btnPickDcs">Choose another folder…</button></div>
+      <div class="install" id="install"></div>
+      <p class="hint">Liveries go in <code id="livPath">Saved Games\DCS\Liveries</code>. That's the same for Steam and standalone DCS. Pick <code>DCS.openbeta</code> only if you still fly the old open beta.</p>
+    </div>
+    <div class="card" id="onlineCard">
+      <div class="head"><span class="num">02</span><h2>Online updates</h2><button class="btn ghost" id="btnCheck">Check now</button></div>
+      <div id="online"><div class="empty">Not checked yet.</div></div>
+      <label class="check" style="margin-top:12px;font-size:12.5px;color:var(--dim)"><input type="checkbox" id="autoCheck"> <span>Check for updates every time Wet Paint opens</span></label>
+    </div>
+  </div>
+
+  <div class="progress" id="progI"><div class="row"><div class="tag" data-phase style="flex:1">Working</div><button class="btn ghost" data-cancel hidden>Stop</button></div><div class="bar"><i></i></div><div class="line"><span data-cur></span><span data-pct></span></div></div>
+  <div class="err" id="errI"></div>
+  <div id="aircraftI"></div>
+
+  <details class="manual" id="manual">
+    <summary>Install a pack file by hand</summary>
+    <div class="card" style="margin-top:10px">
+      <div class="head"><span class="num">↳</span><h2>Livery pack file</h2><button class="btn ghost" id="btnRefresh" title="Look in Downloads again">Refresh</button></div>
+      <div class="packs" id="packs"></div>
+      <div class="row" style="margin-top:8px"><button class="btn" id="btnPickPack">Choose pack…</button></div>
+      <p class="hint">For when you're offline, or someone handed you a pack zip. Wet Paint finds packs in your Downloads folder by itself, so don't unzip them.</p>
+    </div>
+    <div class="actions">
+      <div>
+        <div class="tag">// Ready</div>
+        <div id="readyText" style="color:var(--paper);margin-top:4px">Pick a pack to install.</div>
+      </div>
+      <div class="spacer"></div>
+      <button class="btn primary" id="btnInstall" disabled>Install &amp; Verify</button>
+    </div>
+  </details>
+
+  <div class="results" id="resI"></div>
+</section>
+
+<!-- ============================================================ BUILD -->
+<section id="tab-build" hidden>
+  <div class="hero" data-state="grey" style="--lamp:var(--amber);grid-template-columns:1fr">
+    <div>
+      <div class="tag">// For Fridge</div>
+      <h1>Build monthly pack</h1>
+      <p>Point this at the master Liveries folder. Wet Paint compares it to last month and packs <b>only new and changed jets</b>, then checks every <code>description.lua</code> for broken folder names.</p>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:18px">
+    <div class="field">
+      <label>Master Liveries folder</label>
+      <div class="row"><input type="text" id="bSrc" placeholder="…/Liveries  (contains FA-18C_hornet, F-14B, …)"><button class="btn" data-pick="src" data-into="bSrc">Browse…</button></div>
+    </div>
+    <div class="field">
+      <label>Last release (feed.json or library.json)</label>
+      <div class="row"><input type="text" id="bPrev" placeholder="Leave empty for the very first build"><button class="btn" data-pick="prev" data-into="bPrev">Browse…</button></div>
+      <p class="hint">Wet Paint remembers this between builds. Leave it empty only the first time: everything counts as new and you should tick <b>Full master pack</b>.</p>
+    </div>
+    <div class="grid" style="margin-top:0">
+      <div class="field"><label>Release label</label><input type="text" id="bRel" style="width:100%"></div>
+      <div class="field"><label>Save pack to</label><div class="row"><input type="text" id="bOut"><button class="btn" data-pick="out" data-into="bOut">Browse…</button></div></div>
+    </div>
+    <div class="field">
+      <label>Pack download link (optional)</label>
+      <input type="text" id="bURL" style="width:100%" placeholder="Leave empty if the zip goes in the same web folder as feed.json">
+      <p class="hint">Only needed if this zip lives somewhere else, e.g. a big full pack on Google Drive. Use a public share link.</p>
+    </div>
+    <label class="check"><input type="checkbox" id="bFull"><span><b>Full master pack</b>: include every livery, not just the changes. Use it for the first build, or once in a while so new pilots get one download.</span></label>
+  </div>
+
+  <div class="actions">
+    <div><div class="tag">// Output</div><div style="color:var(--paper);margin-top:4px">A pack <code>.zip</code> plus <code>feed.json</code>. Upload both to <code>flywetboys.com/downloads/wetpaint/</code>.</div></div>
+    <div class="spacer"></div>
+    <button class="btn primary" id="btnBuild">Build pack</button>
+  </div>
+  <div class="progress" id="progB"><div class="tag" data-phase>Working</div><div class="bar"><i></i></div><div class="line"><span data-cur></span><span data-pct></span></div></div>
+  <div class="err" id="errB"></div>
+  <div class="results" id="resB"></div>
+</section>
+</main>
+
+<footer><span>WET PAINT <span id="ver"></span></span><span>THE WET BOYS // CVW-0</span></footer>
+
+<script>
+const TOKEN = "__TOKEN__";
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const human = n => { if (!n) return "0 B"; const u=["B","KB","MB","GB","TB"]; let i=0; while (n>=1024 && i<u.length-1) { n/=1024; i++; } return (i?n.toFixed(1):n)+" "+u[i]; };
+const ago = t => { const s=(Date.now()-new Date(t))/1000; if (s<60) return "just now"; if (s<3600) return Math.round(s/60)+" min ago"; if (s<86400) return Math.round(s/3600)+" h ago"; return new Date(t).toLocaleDateString(); };
+const plural = (n, w) => n + " " + (n === 1 ? w : w.endsWith("y") && !/[aeiou]y$/.test(w) ? w.slice(0, -1) + "ies" : w + "s");
+
+async function api(path, body) {
+  const r = await fetch(path, { method: body === undefined ? "GET" : "POST", headers: { "X-Token": TOKEN, "Content-Type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || r.statusText);
+  return j;
+}
+
+let S = {}, packs = [], selPack = null, jobBusy = false;
+
+// ------------------------------------------------------------ tabs
+document.querySelectorAll("nav button").forEach(b => b.onclick = () => showTab(b.dataset.tab));
+function showTab(t) {
+  document.querySelectorAll("nav button").forEach(b => b.setAttribute("aria-selected", b.dataset.tab === t));
+  $("#tab-install").hidden = t !== "install";
+  $("#tab-build").hidden = t !== "build";
+  try { localStorage.setItem("wp.tab", t); } catch (e) {}
+}
+
+// ------------------------------------------------------------ install tab
+async function refresh() {
+  S = await api("/api/state");
+  $("#ver").textContent = "v" + S.version;
+  renderDirs(); renderHero();
+  const st = S.settings || {};
+  if (!$("#bSrc").value) $("#bSrc").value = st.build_src || "";
+  if (!$("#bPrev").value) $("#bPrev").value = st.build_prev || "";
+  if (!$("#bOut").value) $("#bOut").value = st.build_out || "";
+  if (!$("#bURL").value) $("#bURL").value = st.build_url || "";
+}
+
+function renderDirs() {
+  const list = [...(S.dcs_dirs || [])];
+  if (S.dcs_dir && !list.some(d => d.path === S.dcs_dir) && S.dcs) list.unshift(S.dcs);
+  $("#livPath").textContent = (S.dcs_dir || "Saved Games\\DCS") + (S.os === "windows" ? "\\" : "/") + "Liveries";
+  $("#dirs").innerHTML = list.length ? list.map(d => `
+    <button class="opt" role="radio" aria-checked="${d.path === S.dcs_dir}" data-path="${esc(d.path)}">
+      <span class="dot"></span>
+      <span class="t"><b>${esc(d.name)}</b><span>${esc(d.path)}</span></span>
+      ${d.used_by ? `<span class="pill">${esc(d.used_by)} DCS</span>` : ""}
+      ${d.release ? `<span class="pill ok">${esc(d.release)}</span>` : d.has_liveries ? `<span class="pill">liveries</span>` : `<span class="pill">empty</span>`}
+    </button>`).join("")
+    : `<div class="empty">No DCS folder found in <code>${esc(S.saved_games)}</code>.<br>Run DCS once, or choose the folder by hand.</div>`;
+  $("#dirs").querySelectorAll(".opt").forEach(b => b.onclick = () => setDcs(b.dataset.path));
+  renderInstall(); renderAircraft();
+}
+
+function renderInstall() {
+  const el = $("#install"), in_ = S.install, manual = S.settings?.install_dir;
+  if (S.os !== "windows" && !in_) { el.innerHTML = ""; return; }
+  el.innerHTML = in_
+    ? `<div class="t"><b>DCS install · ${esc(in_.kind)}</b><span title="${esc(in_.path)}">${esc(in_.path)}</span></div>
+       <button class="btn ghost" id="btnInstallDir">Change…</button>${manual ? `<button class="btn ghost" id="btnInstallAuto" title="Go back to auto-detect">Auto</button>` : ""}`
+    : `<div class="t"><b>DCS install</b><span>Not found. Aircraft names can't be checked.</span></div><button class="btn" id="btnInstallDir">Locate…</button>`;
+  $("#btnInstallDir").onclick = async () => { const p = await pick("install", in_?.path || ""); if (p) setInstall(p); };
+  if ($("#btnInstallAuto")) $("#btnInstallAuto").onclick = () => setInstall("");
+}
+async function setInstall(p) {
+  try { await api("/api/install-dir", { path: p }); clearErr("I"); await refresh(); } catch (e) { showErr("I", e.message); }
+}
+
+function renderAircraft() {
+  const el = $("#aircraftI"), issues = S.aircraft_issues || [];
+  if (!issues.length) { el.innerHTML = ""; return; }
+  const bad = issues.filter(i => i.level === "error"), absent = issues.filter(i => i.level !== "error");
+  let html = "";
+  if (bad.length) html += `<div class="card" style="margin-top:18px;border-color:var(--red)"><div class="head"><span class="num">!</span><h2>Folder names DCS won't recognise</h2><span class="pill bad">${bad.length}</span></div>
+    <table><tr><th>In the pack</th><th>Your DCS calls it</th><th>Liveries</th></tr>
+    ${bad.map(i => `<tr><td class="mono">${esc(i.aircraft)}</td><td class="mono" style="color:var(--green-bright)">${esc(i.suggest)}</td><td>${i.liveries.map(esc).join(", ")}</td></tr>`).join("")}</table>
+    <p class="hint">These jets are installed, but DCS won't show them because the aircraft folder name doesn't match. Let Fridge know so he can fix it in the next pack.</p></div>`;
+  if (absent.length) html += `<div class="card" style="margin-top:${bad.length ? 12 : 18}px"><details><summary>${`${absent.length} aircraft`} in the library ${absent.length === 1 ? "isn't" : "aren't"} installed in your DCS (${plural(absent.reduce((n, i) => n + i.liveries.length, 0), "livery")})</summary>
+    <table><tr><th>Aircraft folder</th><th>Liveries</th></tr>${absent.map(i => `<tr><td class="mono">${esc(i.aircraft)}</td><td>${i.liveries.map(esc).join(", ")}</td></tr>`).join("")}</table>
+    <p class="hint">Normal if you don't own that module or mod. The liveries are ready and appear once you install it. If you <i>do</i> have it, check the DCS install shown above is the one you fly.</p></details></div>`;
+  el.innerHTML = html;
+}
+
+async function setDcs(p) {
+  if (!p || jobBusy) return;
+  try { await api("/api/dcs", { path: p }); clearErr("I"); $("#resI").innerHTML = ""; await refresh(); renderPacks(); if (S.auto_check) run("check", "I", {}); }
+  catch (e) { showErr("I", e.message); }
+}
+
+function renderHero() {
+  const h = $("#hero"), inst = S.installed, plan = S.plan, scan = plan?.scan || S.last_scan;
+  let state = "grey", tag = "// Livery status", title, text, meta = "";
+  if (!S.dcs_dir) { title = "No DCS folder"; text = "Pick your DCS Saved Games folder below."; }
+  else if (!inst && !plan) { title = "No Wet Boys liveries yet"; text = S.auto_check ? "Checking flywetboys.com…" : "Hit Check now to download the Wet Boys library."; }
+  else if (!inst && plan) { state = "amber"; tag = "// Welcome aboard"; title = "Library not installed"; text = "Download the Wet Boys library on the right. If you already unzipped the old master pack, Wet Paint only fetches what's missing."; }
+  else if (!scan) { title = "Not verified"; text = `Release ${inst.release} is on record but hasn't been checked yet.`; meta = `${plural(inst.liveries,"livery")} · ${human(inst.bytes)}`; }
+  else if (scan.up_to_date) {
+    state = "green"; tag = "// Green light"; title = "Up to date";
+    text = `Every Wet Boys jet is installed and matches release ${scan.release}. You're good to fly.`;
+    meta = `${scan.total} liveries · ${human(inst.bytes)} · verified ${ago(scan.scanned)}`;
+  } else {
+    state = "amber"; tag = "// Action needed"; title = "Update needed";
+    const bad = scan.total - scan.ok;
+    text = `${bad} of ${scan.total} liveries are missing or out of date. ` + (plan && plan.steps?.length ? "Hit Update now to fix it." : scan.need_packs?.length ? `Install the ${scan.need_packs.join(", ")} pack${scan.need_packs.length > 1 ? "s" : ""}.` : "");
+    meta = `release ${scan.release} · verified ${ago(scan.scanned)}`;
+  }
+  if (jobBusy) { state = "busy"; }
+  h.dataset.state = state;
+  $("#heroTag").textContent = tag; $("#heroTitle").textContent = jobBusy ? "Working…" : title; $("#heroText").textContent = text; $("#heroMeta").textContent = meta;
+  $("#btnScan").disabled = jobBusy || !inst;
+  renderOnline();
+  if (scan && inst && !jobBusy && !$("#resI").innerHTML) renderScan(scan, null);
+}
+
+async function loadPacks() {
+  try { packs = (await api("/api/packs")) || []; } catch (e) { packs = []; }
+  const want = S.arg_pack || new URLSearchParams(location.search).get("pack");
+  if (want && !packs.some(p => p.path === want)) await choosePack(want, true);
+  else {
+    if (want) selPack = packs.find(p => p.path === want);
+    if (!selPack || !packs.some(p => p.path === selPack.path)) selPack = packs[0] || null;
+    renderPacks();
+  }
+}
+
+function renderPacks() {
+  const instCreated = S.installed ? new Date(S.installed.created) : null;
+  $("#packs").innerHTML = packs.length ? packs.map(p => {
+    const older = instCreated && new Date(p.created) < instCreated;
+    const same = S.installed && p.release === S.installed.release;
+    return `<button class="opt" role="radio" aria-checked="${selPack && p.path === selPack.path}" data-path="${esc(p.path)}">
+      <span class="dot"></span>
+      <span class="t"><b>${esc(p.release)} ${p.kind === "full" ? "full pack" : "update"} · ${plural(p.liveries.length, "jet")}</b><span>${esc(p.name)} · ${human(p.bytes)}</span></span>
+      ${older ? `<span class="pill">older</span>` : same ? `<span class="pill ok">installed</span>` : `<span class="pill warn">new</span>`}
+    </button>`; }).join("")
+    : `<div class="empty">No livery packs in your Downloads folder yet.<br><a href="https://flywetboys.com/downloads/index.html" target="_blank">Download this month's pack</a>, then hit Refresh.</div>`;
+  $("#packs").querySelectorAll(".opt").forEach(b => b.onclick = () => { selPack = packs.find(p => p.path === b.dataset.path); renderPacks(); });
+  updateReady();
+}
+
+async function choosePack(path, quiet) {
+  try {
+    const r = await api("/api/pack", { path });
+    if (!packs.some(p => p.path === r.pack.path)) packs.unshift(r.pack);
+    selPack = r.pack; clearErr("I"); renderPacks();
+  } catch (e) { if (!quiet) showErr("I", e.message); else renderPacks(); }
+}
+
+function updateReady() {
+  const b = $("#btnInstall");
+  b.disabled = jobBusy || !selPack || !S.dcs_dir;
+  $("#readyText").innerHTML = !S.dcs_dir ? "Pick your DCS folder." : !selPack ? "Pick a pack to install."
+    : `Install <b>${esc(selPack.release)}</b> (${plural(selPack.liveries.length, "jet")}) into <code>${esc(S.dcs?.name || S.dcs_dir)}</code>, then verify the whole library.`;
+}
+
+$("#btnRefresh").onclick = async () => { $("#btnRefresh").disabled = true; await loadPacks(); $("#btnRefresh").disabled = false; };
+$("#btnPickPack").onclick = async () => { const r = await pick("pack"); if (r) choosePack(r); };
+$("#btnPickDcs").onclick = async () => { const r = await pick("dcs", S.saved_games); if (r) setDcs(r); };
+$("#btnInstall").onclick = () => run("install", "I", { pack: selPack.path });
+$("#btnScan").onclick = () => run("scan", "I", {});
+
+function renderScan(scan, inst) {
+  scan.liveries = scan.liveries || []; scan.need_packs = scan.need_packs || [];
+  if (inst) for (const k of ["installed", "skipped"]) inst[k] = inst[k] || [];
+  const bad = scan.liveries.filter(l => l.state !== "ok"), good = scan.liveries.filter(l => l.state === "ok");
+  const stateCls = { missing: "bad", incomplete: "bad", outdated: "warn" };
+  let html = "";
+  if (inst) {
+    html += `<div class="card"><div class="head"><span class="num">✓</span><h2>Installed ${esc(inst.release)}</h2></div>
+      <div class="kv"><div><b>${inst.installed.length}</b><span>liveries written</span></div><div><b>${inst.files}</b><span>files written</span></div><div><b>${inst.unchanged}</b><span>already current</span></div><div><b>${human(inst.bytes)}</b><span>copied</span></div></div>
+      ${inst.skipped?.length ? `<p class="hint">Skipped ${plural(inst.skipped.length, "livery")} because a newer version is already expected: ${inst.skipped.map(esc).join(", ")}</p>` : ""}
+      ${inst.installed.length ? `<details><summary>Show installed liveries</summary><ul class="list">${inst.installed.map(i => `<li><span class="sym" style="color:var(--green-bright)">+</span>${esc(i)}</li>`).join("")}</ul></details>` : ""}
+    </div>`;
+  }
+  if (bad.length) {
+    html += `<div class="card"><div class="head"><span class="num">!</span><h2>Needs attention</h2><span class="pill warn">${bad.length}</span></div>
+      <table><tr><th>Livery</th><th>Aircraft</th><th>Status</th><th>Fixed by</th></tr>
+      ${bad.map(l => `<tr><td>${esc(l.folder)}${l.problems?.length ? `<small>${esc(l.problems.slice(0,3).join(" · "))}${l.problems.length > 3 ? " · …" : ""}</small>` : ""}</td><td class="mono">${esc(l.aircraft)}</td><td><span class="pill ${stateCls[l.state] || ""}">${esc(l.state)}</span></td><td class="mono">${esc(l.updated)} pack</td></tr>`).join("")}
+      </table><p class="hint">Hit <b>Update now</b> and Wet Paint downloads exactly what's needed. Offline? Install the pack files by hand below, in any order. Wet Paint never overwrites a newer jet with an older one.</p></div>`;
+  }
+  html += `<div class="card"><details${bad.length ? "" : " open"}><summary>${good.length} of ${scan.total} liveries verified OK</summary>
+    <table><tr><th>Livery</th><th>Aircraft</th><th>Version</th><th>Size</th></tr>
+    ${good.map(l => `<tr><td>${esc(l.folder)}</td><td class="mono">${esc(l.aircraft)}</td><td class="mono">${esc(l.updated)}</td><td class="mono">${human(l.size)}</td></tr>`).join("")}
+    </table></details></div>`;
+  $("#resI").innerHTML = html;
+}
+
+// ------------------------------------------------------------ online updates
+const sumBytes = steps => steps.reduce((n, s) => n + (s.bytes || 0), 0);
+const stepLabel = s => `${s.release} ${s.kind === "full" ? "full library" : "update"}`;
+function stepsList(steps) {
+  return `<ul class="steps">${steps.map(s => `<li><span>${esc(stepLabel(s))} · ${plural((s.liveries || []).length, "jet")}</span><span>${human(s.bytes)}</span></li>`).join("")}</ul>`;
+}
+function renderOnline() {
+  const el = $("#online"), plan = S.plan;
+  $("#btnCheck").disabled = jobBusy || !S.dcs_dir;
+  $("#autoCheck").checked = !!S.auto_check;
+  if (!S.dcs_dir) { el.innerHTML = `<div class="empty">Pick your DCS folder first.</div>`; return; }
+  if (!plan) {
+    el.innerHTML = S.feed_error
+      ? `<div class="empty">${esc(S.feed_error)}<br><span style="font-size:12px">You can still install a pack file by hand below.</span></div>`
+      : `<div class="empty">${jobBusy ? "Checking…" : "Not checked yet."}</div>`;
+    return;
+  }
+  const full = plan.full_option;
+  let html = "";
+  if (plan.up_to_date) {
+    html = `<p class="big" style="color:var(--green-bright)">✓ Nothing to download</p>
+      <p class="hint" style="margin-top:0">You have every jet in release <b>${esc(plan.latest)}</b>.</p>
+      ${full ? `<button class="linkbtn" data-update="full">Re-download the full library (${human(full.bytes)})</button>` : ""}`;
+  } else if (plan.steps?.length) {
+    const cheaperThanFull = !full || plan.bytes < full.bytes;
+    html = `<p class="big">${plan.first_time && !cheaperThanFull ? "Download the Wet Boys library" : `Release ${esc(plan.latest)} is ready`}</p>
+      ${stepsList(plan.steps)}
+      <div class="online-actions">
+        <button class="btn primary" data-update="auto">${plan.first_time && !cheaperThanFull ? "Download full library" : "Update now"} · ${human(plan.bytes)}</button>
+        ${full && cheaperThanFull && plan.first_time ? `<button class="linkbtn" data-update="full">First time? Download the full library instead (${human(full.bytes)})</button>` : ""}
+      </div>`;
+  } else {
+    html = `<p class="big">Update needed</p>`;
+  }
+  if (plan.missing?.length) html += `<div class="notice">${plural(plan.missing.length, "jet")} can't be downloaded yet: ${plan.missing.slice(0, 6).map(esc).join(", ")}${plan.missing.length > 6 ? "…" : ""}. Let Fridge know.</div>`;
+  if (plan.app) html += `<div class="notice">Wet Paint ${esc(plan.app.version)} is out (you have ${esc(S.version)}). <a href="${esc(plan.app.url)}" target="_blank">Download it</a>${plan.app.notes ? ` · ${esc(plan.app.notes)}` : ""}</div>`;
+  el.innerHTML = html;
+  el.querySelectorAll("[data-update]").forEach(b => b.disabled = jobBusy);
+  el.querySelectorAll("[data-update]").forEach(b => b.onclick = () => {
+    const mode = b.dataset.update;
+    if (mode === "full" && !confirm(`Download the full Wet Boys library (${human(full.bytes)})? Files you already have are kept and only replaced if they differ.`)) return;
+    run("update", "I", { mode });
+  });
+}
+$("#btnCheck").onclick = () => run("check", "I", {});
+$("#autoCheck").onchange = async e => { try { await api("/api/settings", { auto_check: e.target.checked }); S.auto_check = e.target.checked; } catch (err) { showErr("I", err.message); } };
+
+// ------------------------------------------------------------ build tab
+document.querySelectorAll("[data-pick]").forEach(b => b.onclick = async () => {
+  const inp = $("#" + b.dataset.into);
+  const r = await pick(b.dataset.pick, inp.value);
+  if (r) inp.value = r;
+});
+$("#bRel").value = new Date().toISOString().slice(0, 7);
+$("#btnBuild").onclick = () => run("build", "B", { source: $("#bSrc").value.trim(), prev: $("#bPrev").value.trim(), release: $("#bRel").value.trim(), out: $("#bOut").value.trim(), full: $("#bFull").checked, url: $("#bURL").value.trim() });
+
+function renderBuild(r) {
+  for (const k of ["new", "changed", "removed", "warnings"]) r[k] = r[k] || [];
+  const errs = r.warnings?.filter(w => w.level === "error") || [], warns = r.warnings?.filter(w => w.level === "warn") || [], infos = r.warnings?.filter(w => w.level === "info") || [];
+  let html = "";
+  if (r.warnings?.length) html += `<div class="card"><div class="head"><span class="num">!</span><h2>Problems found</h2>${errs.length ? `<span class="pill bad">${errs.length} will break in DCS</span>` : ""}</div>
+      <table>${[...errs, ...warns, ...infos].map(w => `<tr><td style="width:120px"><span class="pill ${w.level === "error" ? "bad" : w.level === "warn" ? "warn" : "info"}">${esc(w.level === "info" ? "check" : w.level)}</span></td><td class="mono">${esc(w.livery)}<small>${esc(w.message)}</small></td></tr>`).join("")}</table></div>`;
+  if (r.no_changes) { html += `<div class="card"><div class="head"><span class="num">=</span><h2>Nothing new</h2></div><p class="hint" style="margin:0">The master folder matches the last release exactly, so no pack was built.</p></div>`; $("#resB").innerHTML = html; return; }
+  const items = [...r.new.map(i => ["+", i, "var(--green-bright)"]), ...r.changed.map(i => ["~", i, "var(--amber-bright)"]), ...r.removed.map(i => ["−", i, "#ff6b72"])];
+  html = `<div class="card"><div class="head"><span class="num">✓</span><h2>Release ${esc(r.release)} built</h2></div>
+    <div class="kv"><div><b>${r.new.length}</b><span>new jets</span></div><div><b>${r.changed.length}</b><span>updated</span></div><div><b>${r.removed.length}</b><span>removed</span></div><div><b>${human(r.pack_bytes)}</b><span>pack size</span></div></div>
+    <ul class="list">${items.map(([s, i, c]) => `<li><span class="sym" style="color:${c}">${s}</span>${esc(i)}</li>`).join("")}</ul>
+    <h2 style="margin:20px 0 10px">Upload to flywetboys.com/downloads/wetpaint/</h2>
+    <table>
+      <tr><td class="mono">${esc(r.pack_path)}${$("#bURL").value.trim() ? `<small>Upload this one to: ${esc($("#bURL").value.trim())}</small>` : ""}</td><td style="width:1%"><button class="btn" data-reveal="${esc(r.pack_path)}">Show</button></td></tr>
+      <tr><td class="mono">${esc(r.feed_path)}<small>Upload it after the zip. Pilots' Wet Paint sees the update the moment this file changes. Keep the old pack zips online so pilots who missed a month can catch up.</small></td><td><button class="btn" data-reveal="${esc(r.feed_path)}">Show</button></td></tr>
+    </table>
+    ${r.removed.length ? `<p class="hint">Removed jets drop out of the library check. Pilots keep their copies until they delete them.</p>` : ""}
+  </div>` + html;
+  $("#resB").innerHTML = html;
+  $("#bPrev").value = r.feed_path;
+  document.querySelectorAll("[data-reveal]").forEach(b => b.onclick = () => api("/api/reveal", { path: b.dataset.reveal }));
+}
+
+function updateAsInstall(u) {
+  if (!u) return null;
+  return { release: (u.installed || []).join(" + "), installed: [...new Set(u.liveries || [])], files: u.files, unchanged: u.unchanged, bytes: u.bytes, skipped: [] };
+}
+
+// ------------------------------------------------------------ jobs
+async function pick(kind, start) {
+  try { return (await api("/api/pick", { kind, start: start || "" })).path; }
+  catch (e) { showErr(kind === "pack" || kind === "dcs" ? "I" : "B", "Couldn't open the file picker: " + e.message); }
+}
+function showErr(t, m) { const e = $("#err" + t); e.textContent = m; e.classList.add("on"); }
+function clearErr(t) { const e = $("#err" + t); e.classList.remove("on"); e.textContent = ""; }
+
+async function run(kind, t, body) {
+  clearErr(t);
+  try { await api("/api/" + kind, body); }
+  catch (e) { showErr(t, e.message); return; }
+  jobBusy = true; setBusy(true);
+  $("#res" + t).innerHTML = "";
+  const prog = $("#prog" + t); prog.classList.add("on");
+  const stop = prog.querySelector("[data-cancel]");
+  if (stop) { stop.hidden = !["update", "check"].includes(kind); stop.disabled = false; stop.onclick = () => { stop.disabled = true; api("/api/cancel", {}); }; }
+  let job, samples = [];
+  for (;;) {
+    job = await api("/api/job");
+    const pct = job.total ? Math.min(100, job.done / job.total * 100) : 0;
+    prog.querySelector("[data-phase]").textContent = "// " + (job.phase || "Working");
+    prog.querySelector("i").style.width = pct + "%";
+    prog.querySelector("[data-cur]").textContent = job.current || "";
+    // download speed + time left, averaged over the last ~5 s
+    const now = Date.now();
+    samples.push([now, job.done, job.phase]);
+    samples = samples.filter(s => now - s[0] < 5000 && s[2] === job.phase);
+    let rate = "";
+    if (/^Downloading/.test(job.phase || "") && samples.length > 2) {
+      const [t0, d0] = samples[0], bps = (job.done - d0) / ((now - t0) / 1000);
+      if (bps > 0) { const left = (job.total - job.done) / bps; rate = `  ·  ${human(bps)}/s  ·  ${left > 5400 ? Math.round(left / 3600) + " h" : left > 90 ? Math.round(left / 60) + " min" : Math.round(left) + " s"} left`; }
+    }
+    prog.querySelector("[data-pct]").textContent = job.total ? `${pct.toFixed(0)}%  ·  ${human(job.done)} / ${human(job.total)}${rate}` : "";
+    if (!job.running) break;
+    await new Promise(r => setTimeout(r, 250));
+  }
+  if (stop) stop.hidden = true;
+  prog.classList.remove("on");
+  jobBusy = false; setBusy(false);
+  if (job.error) showErr(t, job.error);
+  if (t === "I") {
+    await refresh();
+    if (job.result?.offline) { S.feed_error = job.result.message; renderOnline(); }
+    if (job.result?.plan) { S.plan = job.result.plan; renderHero(); if (job.result.plan.scan && S.installed) renderScan(job.result.plan.scan, null); }
+    if (job.result?.scan) { S.last_scan = job.result.scan; renderHero(); renderScan(job.result.scan, job.result.install || updateAsInstall(job.result.update)); }
+    renderPacks();
+  } else if (job.result) { try { renderBuild(job.result); } catch (e) { showErr(t, "Display error: " + e.message); } }
+}
+function setBusy(b) {
+  document.querySelectorAll(".btn, .opt").forEach(x => { if (b) { x.dataset.wasDisabled = x.disabled; x.disabled = true; } else { x.disabled = x.dataset.wasDisabled === "true"; } });
+  renderHero(); updateReady();
+}
+
+// ------------------------------------------------------------ lifecycle
+setInterval(() => api("/api/ping", {}).catch(() => {}), 20000);
+addEventListener("pagehide", () => navigator.sendBeacon("/api/bye?t=" + TOKEN));
+
+(async () => {
+  let tab = "install";
+  try { tab = localStorage.getItem("wp.tab") || tab; } catch (e) {}
+  await refresh();
+  if (!localStorageHas() && S.os === "darwin") tab = "build";
+  showTab(tab);
+  await loadPacks();
+  if (S.auto_check && S.dcs_dir && !S.plan) run("check", "I", {});
+})().catch(e => showErr("I", e.message));
+function localStorageHas() { try { return !!localStorage.getItem("wp.tab"); } catch (e) { return false; } }
+</script>
+</body>
+</html>

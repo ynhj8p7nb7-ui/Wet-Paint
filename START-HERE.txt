@@ -1,0 +1,55 @@
+WET PAINT 1.3.0 - START HERE
+============================
+
+Wet Paint installs and updates the Wet Boys (CVW-0) DCS liveries for you and
+shows a green light when you're up to date.
+
+Copy this whole folder to your own PC first (e.g. Documents\Wet Paint).
+Don't run things straight from the shared Dropbox folder.
+
+
+OPTION A - Build it yourself (recommended, avoids most antivirus warnings)
+--------------------------------------------------------------------------
+1. Install Go once (free, from Google). Open "Terminal" or "Command Prompt" and run:
+       winget install GoLang.Go
+   (or download it from https://go.dev/dl/)
+2. Close that window. Double-click:
+       Run Wet Paint (build from source).cmd
+   It checks the code, runs the tests, builds dist\WetPaint.exe on YOUR PC, and starts it.
+   Windows treats an exe you built yourself much more like trusted software than one
+   downloaded from the internet.
+
+If Windows asks "Do you want to run this file?" for the .cmd, that's because the
+folder came from the internet. Click Run, or right-click the .cmd, choose
+Properties, tick "Unblock", then OK.
+
+
+OPTION B - Use the ready-made exe
+---------------------------------
+Run dist\WetPaint.exe. Because it's not code-signed yet, Windows may say
+"Windows protected your PC". Click "More info" and then "Run anyway".
+Check it's the real file first. In Command Prompt inside the dist folder:
+       certutil -hashfile WetPaint.exe SHA256
+The result must match dist\WetPaint.exe.sha256.txt.
+
+
+USING IT
+--------
+A small black window opens (that's Wet Paint itself; close it to quit), and
+Wet Paint opens in your normal web browser.
+  - First time: hit "Download full library".
+  - After that: hit "Update now" when there's an update. Then wait for the green light.
+Close DCS before updating.
+
+
+FOUND A PROBLEM? WANT TO FIX IT?
+--------------------------------
+Open this folder in Claude Code and tell it what went wrong. Claude reads
+CLAUDE.md first, which explains how Wet Paint works and the rules it must follow.
+Send fixes back as a GitHub pull request, or paste the changes in the dev channel.
+
+SAFETY: only run a WetPaint.exe that came from flywetboys.com, from the main
+branch on GitHub, or that you built yourself from this folder. Never run one
+someone sends you in a DM.
+
+Used version 1.0-1.2 before? Read TESTER-NOTE.txt to clean up after it.

@@ -1,0 +1,25 @@
+Wet Paint — note for testers of versions 1.0–1.2
+
+Thanks for testing, and sorry about the scare. What happened:
+
+- To look like an app, the old Wet Paint opened Microsoft Edge with its own
+  separate browser profile. Edge can sign a brand-new profile into your Microsoft
+  account and sync your account's extensions into it. That's the most likely way
+  AdGuard appeared. Wet Paint has no code that installs extensions.
+- The old build also ran hidden PowerShell windows for its file pickers and wasn't
+  code-signed. Windows Defender reads that combination as adware, so it blocked it.
+
+Version 1.3.0 removes all of that. It opens a normal tab in your usual browser,
+uses the standard Windows file dialogs, and shows a small console window while
+it runs.
+
+To clean up after the old version:
+  1. Close Wet Paint and Edge.
+  2. Press Win+R, paste  %AppData%\WetPaint\window  and press Enter.
+     Delete that "window" folder (it's the separate Edge profile the old version made).
+  3. If AdGuard is in your normal Edge too (edge://extensions), it came from your
+     Microsoft account's extension sync. Remove it there.
+
+Please only run a WetPaint.exe downloaded from flywetboys.com, and check it matches
+the published fingerprint:
+  certutil -hashfile WetPaint.exe SHA256

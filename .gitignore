@@ -1,0 +1,14 @@
+# Built files — GitHub builds these itself (see .github/workflows/build.yml)
+dist/
+*.exe
+*.test
+
+# Mac / Windows clutter
+.DS_Store
+._*
+Thumbs.db
+desktop.ini
+
+# Leftovers from interrupted installs/downloads
+*.wetpaint-part
+*.download

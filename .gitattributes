@@ -1,0 +1,12 @@
+# Auto detect text files and perform LF normalization
+* text=auto
+
+# Windows scripts must keep Windows line endings
+*.cmd text eol=crlf
+*.txt text eol=crlf
+
+# Never touch binary files
+*.png binary
+*.syso binary
+*.exe binary
+*.zip binary
