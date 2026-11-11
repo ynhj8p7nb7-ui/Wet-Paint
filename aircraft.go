@@ -101,11 +101,13 @@ type AircraftNames struct {
 	Install *DCSInstall       `json:"install"`
 	Names   map[string]string `json:"-"` // lower(name) → name
 	Count   int               `json:"count"`
+	// Dirs: lower(name) → the folders DCS keeps that aircraft's own liveries in.
+	Dirs map[string][]string `json:"-"`
 }
 
 // readAircraftNames collects every livery folder name DCS itself uses.
 func readAircraftNames(in *DCSInstall, dcsDir string) *AircraftNames {
-	an := &AircraftNames{Install: in, Names: map[string]string{}}
+	an := &AircraftNames{Install: in, Names: map[string]string{}, Dirs: map[string][]string{}}
 	addDir := func(dir string) {
 		ents, err := os.ReadDir(dir)
 		if err != nil {
@@ -123,6 +125,9 @@ func readAircraftNames(in *DCSInstall, dcsDir string) *AircraftNames {
 				continue
 			}
 			an.Names[strings.ToLower(n)] = n
+			if e.IsDir() {
+				an.Dirs[strings.ToLower(n)] = append(an.Dirs[strings.ToLower(n)], filepath.Join(dir, n))
+			}
 		}
 	}
 	modLiveries := func(root string) {
@@ -133,16 +138,55 @@ func readAircraftNames(in *DCSInstall, dcsDir string) *AircraftNames {
 			}
 		}
 	}
+	// Ships and ground units (CVN_75, …) keep their liveries under "tech".
 	if in != nil {
 		addDir(filepath.Join(in.Path, "Bazar", "Liveries"))
-		modLiveries(filepath.Join(in.Path, "CoreMods", "aircraft"))
-		modLiveries(filepath.Join(in.Path, "Mods", "aircraft"))
+		for _, kind := range []string{"aircraft", "tech"} {
+			modLiveries(filepath.Join(in.Path, "CoreMods", kind))
+			modLiveries(filepath.Join(in.Path, "Mods", kind))
+		}
 	}
 	if dcsDir != "" {
-		modLiveries(filepath.Join(dcsDir, "Mods", "aircraft")) // third-party mods live in Saved Games
+		// third-party mods live in Saved Games
+		modLiveries(filepath.Join(dcsDir, "Mods", "aircraft"))
+		modLiveries(filepath.Join(dcsDir, "Mods", "tech"))
 	}
 	an.Count = len(an.Names)
 	return an
+}
+
+// stockLiveryDirs lists, for every aircraft DCS knows on this PC, the folders
+// holding its stock liveries. Empty when DCS isn't installed (Fridge's Mac).
+func stockLiveryDirs() map[string][]string {
+	out := map[string][]string{}
+	for _, in := range findDCSInstalls() {
+		in := in
+		for k, v := range readAircraftNames(&in, filepath.Join(savedGamesDir(), in.SavedGames)).Dirs {
+			out[k] = append(out[k], v...)
+		}
+	}
+	return out
+}
+
+// sharedLiveryFolders are folders some modules ship inside their own Liveries
+// folder purely to hold textures every livery shares (the C-130J's "Common").
+// A description.lua pointing at one is correct even though no such folder
+// exists in Saved Games.
+var sharedLiveryFolders = map[string]bool{"common": true}
+
+// hasFolderFold reports whether dir contains a folder called name, ignoring
+// case (DCS runs on Windows; Fridge builds on a Mac).
+func hasFolderFold(dir, name string) bool {
+	ents, err := os.ReadDir(dir)
+	if err != nil {
+		return false
+	}
+	for _, e := range ents {
+		if e.IsDir() && strings.EqualFold(e.Name(), name) {
+			return true
+		}
+	}
+	return false
 }
 
 // ---------------------------------------------------------------- checking a library
@@ -193,8 +237,22 @@ func normName(s string) string {
 	}, strings.ToLower(s))
 }
 
+func digitsOf(s string) string {
+	return strings.Map(func(r rune) rune {
+		if r >= '0' && r <= '9' {
+			return r
+		}
+		return -1
+	}, s)
+}
+
 // nearestName finds a known name that differs only by punctuation or by a
-// small typo — "FA18C_hornet", "F-16C-50", "F-14B " → the real DCS name.
+// small typo — "FA18C_hornet", "F-16C-50", "MiG-21 Bis" → the real DCS name.
+//
+// Aircraft designations are short and differ by one character all the time
+// (KC130 / KC-135, F-15C / F-15E), so a near-miss only counts as a typo when
+// the name is long enough and its numbers are identical; otherwise real
+// aircraft get reported as misspellings of each other.
 func nearestName(name string, known map[string]string) string {
 	n := normName(name)
 	best, bestD := "", 3
@@ -203,14 +261,14 @@ func nearestName(name string, known map[string]string) string {
 		if kn == n {
 			return k
 		}
-		if len(n) < 4 || len(kn) < 4 {
+		if len(n) < 8 || len(kn) < 8 || digitsOf(n) != digitsOf(kn) {
 			continue
 		}
-		if d := editDistance(n, kn); d < bestD {
+		if d := editDistance(n, kn); d < bestD || (d == bestD && k < best) {
 			best, bestD = k, d
 		}
 	}
-	if bestD <= 1 || (bestD == 2 && len(n) >= 8) {
+	if bestD <= 1 || (bestD == 2 && len(n) >= 12) {
 		return best
 	}
 	return ""
@@ -252,7 +310,11 @@ var builtinAircraft = func() map[string]string {
 		"M-2000C", "MB-339A", "MB-339APAN", "Mi-24P", "mi-8mt", "MiG-15bis", "MiG-19P", "MiG-21bis", "MiG-29-Fulcrum", "mig-29a",
 		"mig-29g", "mig-29s", "Mirage-F1BE", "Mirage-F1CE", "Mirage-F1EE", "MosquitoFBMkVI", "OH-58D", "P-47D-30", "P-51D",
 		"SA342L", "SA342M", "SA342Minigun", "SA342Mistral", "SpitfireLFMkIX", "SpitfireLFMkIXCW", "su-25", "su-25T", "su-27",
-		"Su-33", "TF-51D", "uh-1h", "Yak-52"}
+		"Su-33", "TF-51D", "uh-1h", "Yak-52",
+		// AI tankers and transports squadrons commonly repaint
+		"C-130", "C-17A", "E-2C", "E-3A", "IL-78M", "KC-135", "KC130", "KC135MPRS", "S-3B", "S-3B Tanker",
+		// cockpit liveries and popular community mods (names seen on Wet Boys PCs)
+		"Cockpit_CH-47F", "A-4E-C", "EA-18G", "FA-18E", "FA-18F", "F-22A", "Hercules", "UH-60L"}
 	m := make(map[string]string, len(names))
 	for _, n := range names {
 		m[strings.ToLower(n)] = n
@@ -261,9 +323,23 @@ var builtinAircraft = func() map[string]string {
 }()
 
 // checkSourceAircraft adds builder warnings for aircraft folder names.
+//
+// The built-in list is the baseline. When this PC has DCS installed, the names
+// DCS itself uses (including installed mods) are added, so real mod aircraft
+// stop showing up as "not a standard name".
 func checkSourceAircraft(lib *Manifest) []Warning {
+	known := make(map[string]string, len(builtinAircraft))
+	for k, v := range builtinAircraft {
+		known[k] = v
+	}
+	for _, in := range findDCSInstalls() {
+		in := in
+		for k, v := range readAircraftNames(&in, filepath.Join(savedGamesDir(), in.SavedGames)).Names {
+			known[k] = v
+		}
+	}
 	var w []Warning
-	for _, is := range checkAircraft(lib, builtinAircraft) {
+	for _, is := range checkAircraft(lib, known) {
 		lv := strings.Join(is.Liveries, ", ")
 		if is.Suggest != "" {
 			w = append(w, Warning{is.Aircraft, "error", `Aircraft folder "` + is.Aircraft + `" looks like a typo of the DCS name "` + is.Suggest + `" — DCS won't find these liveries: ` + lv})

@@ -56,6 +56,8 @@ h2 { font-family:var(--head); font-weight:700; letter-spacing:.14em; text-transf
 /* steps */
 .grid { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:18px; margin-top:18px; }
 .grid > *, .hero > * { min-width:0; }
+.hero.fridge { grid-template-columns:1fr auto; padding-right:36px; min-height:178px; }
+.hero.fridge .fridge-art { align-self:end; width:150px; height:auto; margin:-14px 0 -64px; filter:drop-shadow(0 10px 22px rgba(0,0,0,.6)); pointer-events:none; user-select:none; }
 .card { border:1px solid var(--line); background:var(--panel); padding:18px 20px; }
 .card .head { display:flex; align-items:baseline; gap:12px; margin-bottom:14px; }
 .card .head .num { font-family:var(--mono); color:var(--red-bright); font-size:12px; }
@@ -145,6 +147,8 @@ details.manual[open] > summary::before { content:"▾ "; }
   .grid { grid-template-columns:minmax(0,1fr); }
   .hero { grid-template-columns:auto 1fr; }
   .hero .side { grid-column:1/-1; }
+  .hero.fridge { grid-template-columns:1fr; padding-right:28px; min-height:0; }
+  .hero.fridge .fridge-art { display:none; }
   .kv { grid-template-columns:repeat(2,1fr); }
   header { padding:12px 16px; gap:12px; flex-wrap:wrap; }
   main { padding:18px 16px 32px; }
@@ -219,12 +223,13 @@ details.manual[open] > summary::before { content:"▾ "; }
 
 <!-- ============================================================ BUILD -->
 <section id="tab-build" hidden>
-  <div class="hero" data-state="grey" style="--lamp:var(--amber);grid-template-columns:1fr">
+  <div class="hero fridge" data-state="grey" style="--lamp:var(--amber)">
     <div>
       <div class="tag">// For Fridge</div>
       <h1>Build monthly pack</h1>
       <p>Point this at the master Liveries folder. Wet Paint compares it to last month and packs <b>only new and changed jets</b>, then checks every <code>description.lua</code> for broken folder names.</p>
     </div>
+    <img class="fridge-art" src="/fridge.webp" alt="Fridge, the Wet Boys livery artist, in flight gear" width="150" height="266">
   </div>
 
   <div class="card" style="margin-top:18px">
@@ -252,6 +257,7 @@ details.manual[open] > summary::before { content:"▾ "; }
   <div class="actions">
     <div><div class="tag">// Output</div><div style="color:var(--paper);margin-top:4px">A pack <code>.zip</code> plus <code>feed.json</code>. Upload both to <code>flywetboys.com/downloads/wetpaint/</code>.</div></div>
     <div class="spacer"></div>
+    <button class="btn" id="btnCheckSrc" title="Reads and checks the folder. Writes nothing.">Check folder only</button>
     <button class="btn primary" id="btnBuild">Build pack</button>
   </div>
   <div class="progress" id="progB"><div class="tag" data-phase>Working</div><div class="bar"><i></i></div><div class="line"><span data-cur></span><span data-pct></span></div></div>
@@ -503,6 +509,7 @@ document.querySelectorAll("[data-pick]").forEach(b => b.onclick = async () => {
   if (r) inp.value = r;
 });
 $("#bRel").value = new Date().toISOString().slice(0, 7);
+$("#btnCheckSrc").onclick = () => run("build", "B", { source: $("#bSrc").value.trim(), prev: $("#bPrev").value.trim(), release: $("#bRel").value.trim(), full: $("#bFull").checked, check_only: true });
 $("#btnBuild").onclick = () => run("build", "B", { source: $("#bSrc").value.trim(), prev: $("#bPrev").value.trim(), release: $("#bRel").value.trim(), out: $("#bOut").value.trim(), full: $("#bFull").checked, url: $("#bURL").value.trim() });
 
 function renderBuild(r) {
@@ -511,6 +518,13 @@ function renderBuild(r) {
   let html = "";
   if (r.warnings?.length) html += `<div class="card"><div class="head"><span class="num">!</span><h2>Problems found</h2>${errs.length ? `<span class="pill bad">${errs.length} will break in DCS</span>` : ""}</div>
       <table>${[...errs, ...warns, ...infos].map(w => `<tr><td style="width:120px"><span class="pill ${w.level === "error" ? "bad" : w.level === "warn" ? "warn" : "info"}">${esc(w.level === "info" ? "check" : w.level)}</span></td><td class="mono">${esc(w.livery)}<small>${esc(w.message)}</small></td></tr>`).join("")}</table></div>`;
+  if (r.check_only) {
+    const ok = !r.warnings.length;
+    $("#resB").innerHTML = `<div class="card"><div class="head"><span class="num">${errs.length ? "!" : "✓"}</span><h2>Folder checked</h2><span class="pill info">nothing written</span></div>
+      <div class="kv"><div><b>${r.total}</b><span>liveries</span></div><div><b>${human(r.src_bytes)}</b><span>library size</span></div><div><b>${r.shipped}</b><span>would ship</span></div><div><b>${errs.length}</b><span>will break in DCS</span></div></div>
+      <p class="hint" style="margin:0">${ok ? "No problems found. " : ""}A build now would ship ${r.new.length} new and ${r.changed.length} changed ${r.removed.length ? `and retire ${r.removed.length} ` : ""}(about ${human(r.pack_bytes)} before zipping).</p></div>` + html;
+    return;
+  }
   if (r.no_changes) { html += `<div class="card"><div class="head"><span class="num">=</span><h2>Nothing new</h2></div><p class="hint" style="margin:0">The master folder matches the last release exactly, so no pack was built.</p></div>`; $("#resB").innerHTML = html; return; }
   const items = [...r.new.map(i => ["+", i, "var(--green-bright)"]), ...r.changed.map(i => ["~", i, "var(--amber-bright)"]), ...r.removed.map(i => ["−", i, "#ff6b72"])];
   html = `<div class="card"><div class="head"><span class="num">✓</span><h2>Release ${esc(r.release)} built</h2></div>

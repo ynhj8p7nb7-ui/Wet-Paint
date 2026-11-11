@@ -354,6 +354,7 @@ func TestInstallAndAircraftNames(t *testing.T) {
 func TestBuilderFlagsAircraftTypos(t *testing.T) {
 	tmp := t.TempDir()
 	t.Setenv("WETPAINT_CONFIG", filepath.Join(tmp, "cfg"))
+	t.Setenv("WETPAINT_DCS_INSTALL", filepath.Join(tmp, "no-dcs-here")) // don't read a real DCS on the test PC
 	master := filepath.Join(tmp, "master")
 	mkLivery(t, master, "F-16C-50", "Wet Venom", "Wet Venom")
 	mkLivery(t, master, "FA-18C_hornet", "Swipers", "Swipers")
@@ -376,5 +377,132 @@ func TestBuilderFlagsAircraftTypos(t *testing.T) {
 	}
 	if !typo || !mod {
 		t.Fatalf("warnings: %+v", res.Warnings)
+	}
+}
+
+// "Check folder only" must read and report but never write a pack, library or feed.
+func TestCheckOnlyWritesNothing(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("WETPAINT_CONFIG", filepath.Join(tmp, "cfg"))
+	t.Setenv("WETPAINT_DCS_INSTALL", filepath.Join(tmp, "no-dcs-here"))
+	master := filepath.Join(tmp, "master")
+	mkLivery(t, master, "FA-18C_hornet", "15th ADS 'Wet Boys' Gold #6", "15th ADS 'Wet Boys' Gold #6")
+	mkLivery(t, master, "FA-18C_hornet", "Renamed", "Old Name") // broken description.lua
+	out := filepath.Join(tmp, "out")
+	before, _ := os.ReadDir(master)
+	res, err := buildPack(BuildOptions{Source: master, Out: out, Release: "2026-11", Full: true, CheckOnly: true}, loadHashCache(), func(string, int64, int64, string) {})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.CheckOnly || res.Total != 2 || res.Shipped != 2 || res.SrcBytes == 0 || res.PackPath != "" || res.FeedPath != "" {
+		t.Fatalf("result: %+v", res)
+	}
+	broken := false
+	for _, w := range res.Warnings {
+		if w.Level == "error" && strings.Contains(w.Message, "Old Name") {
+			broken = true
+		}
+	}
+	if !broken {
+		t.Fatalf("broken description.lua not reported: %+v", res.Warnings)
+	}
+	if _, err := os.Stat(out); !os.IsNotExist(err) {
+		t.Fatalf("check-only created the output folder")
+	}
+	if after, _ := os.ReadDir(master); len(after) != len(before) {
+		t.Fatalf("check-only changed the master folder")
+	}
+	// and it works with no output folder at all
+	if _, err := buildPack(BuildOptions{Source: master, CheckOnly: true}, loadHashCache(), func(string, int64, int64, string) {}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Ship and ground-unit liveries (CVN_75, …) live under CoreMods\tech and
+// Mods\tech, not under "aircraft". Found on a real Wet Boys PC.
+func TestTechLiveryNames(t *testing.T) {
+	tmp := t.TempDir()
+	inst := filepath.Join(tmp, "DCSWorld")
+	fakeInstall(t, inst, "", "FA-18C_hornet")
+	os.MkdirAll(filepath.Join(inst, "CoreMods", "tech", "USS_Nimitz", "Liveries", "CVN_75", "default"), 0o755)
+	dcs := filepath.Join(tmp, "Saved Games", "DCS")
+	os.MkdirAll(filepath.Join(dcs, "Mods", "tech", "SomeAssetPack", "Liveries", "billboard_motorized", "x"), 0o755)
+	in := describeInstall(inst, "Steam")
+	names := readAircraftNames(&in, dcs)
+	for _, n := range []string{"cvn_75", "billboard_motorized", "fa-18c_hornet"} {
+		if _, ok := names.Names[n]; !ok {
+			t.Errorf("missing %s in %v", n, names.Names)
+		}
+	}
+}
+
+// Requests that reach the local server under some other host name (a web page
+// that pointed its own domain at 127.0.0.1) are refused.
+func TestLocalOnly(t *testing.T) {
+	t.Setenv("WETPAINT_CONFIG", filepath.Join(t.TempDir(), "cfg"))
+	h := newApp().routes()
+	for host, want := range map[string]int{"127.0.0.1:5123": 200, "localhost:5123": 200, "evil.example:5123": 403, "evil.example": 403} {
+		req := httptest.NewRequest("GET", "/api/alive", nil)
+		req.Host = host
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if rec.Code != want {
+			t.Errorf("Host %s: got %d, want %d", host, rec.Code, want)
+		}
+	}
+	req := httptest.NewRequest("GET", "/fridge.webp", nil)
+	req.Host = "127.0.0.1:5123"
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != 200 || rec.Body.Len() < 1000 || rec.Header().Get("Content-Type") != "image/webp" {
+		t.Errorf("fridge image: %d, %d bytes", rec.Code, rec.Body.Len())
+	}
+}
+
+// Real case from the Wet Boys library: the C-130J livery points at "../common/",
+// a shared texture folder that lives in the DCS install, not in Saved Games.
+// And "../Thunderbird Blank/" style references to a sibling livery are fine.
+func TestDescriptionRefsToStockAndSiblings(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("WETPAINT_CONFIG", filepath.Join(tmp, "cfg"))
+	inst := filepath.Join(tmp, "DCSWorld")
+	fakeInstall(t, inst, "", "F-16C_50")
+	os.MkdirAll(filepath.Join(inst, "CoreMods", "aircraft", "C130J", "Liveries", "C-130J-30", "Shared Skins"), 0o755)
+	t.Setenv("WETPAINT_DCS_INSTALL", inst)
+	t.Setenv("WETPAINT_SAVED_GAMES", filepath.Join(tmp, "Saved Games"))
+	master := filepath.Join(tmp, "master")
+	mkLivery(t, master, "C-130J-30", "Heather", "common")         // well-known shared folder
+	mkLivery(t, master, "C-130J-30", "Heather 2", "shared skins") // exists in the install (case differs)
+	mkLivery(t, master, "F-16C_50", "Thunderbird Blank", "Thunderbird Blank")
+	mkLivery(t, master, "F-16C_50", "Thunderbird 1", "thunderbird blank") // sibling, case differs
+	mkLivery(t, master, "F-16C_50", "Wet Venom", "Wet Venon")             // really broken
+	res, err := buildPack(BuildOptions{Source: master, CheckOnly: true}, loadHashCache(), func(string, int64, int64, string) {})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var errs []string
+	for _, w := range res.Warnings {
+		if w.Level == "error" {
+			errs = append(errs, w.Livery)
+		}
+	}
+	if len(errs) != 1 || errs[0] != "F-16C_50/Wet Venom" {
+		t.Fatalf("want only F-16C_50/Wet Venom flagged, got %v\n%+v", errs, res.Warnings)
+	}
+}
+
+// Real aircraft whose names are one character apart must not be reported as
+// typos of each other (KC130 was flagged as a misspelt KC-135 on a real PC).
+func TestSimilarAircraftAreNotTypos(t *testing.T) {
+	known := map[string]string{"kc-135": "KC-135", "f-15c": "F-15C", "mig-21bis": "MiG-21Bis", "fa-18c_hornet": "FA-18C_hornet", "f-16c_50": "F-16C_50", "su-25": "su-25"}
+	for _, n := range []string{"KC130", "KC135MPRS", "F-15E", "F-15D", "su-25T", "FA-18E", "Hercules", "CVN_75"} {
+		if s := nearestName(n, known); s != "" {
+			t.Errorf("%s wrongly taken for a typo of %s", n, s)
+		}
+	}
+	for n, want := range map[string]string{"MiG-21 Bis": "MiG-21Bis", "FA18C_hornet": "FA-18C_hornet", "F-16C-50": "F-16C_50", "FA-18C_hornt": "FA-18C_hornet", "kc 135": "KC-135"} {
+		if s := nearestName(n, known); s != want {
+			t.Errorf("%s: got %q, want %q", n, s, want)
+		}
 	}
 }

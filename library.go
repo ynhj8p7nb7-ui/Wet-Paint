@@ -306,6 +306,7 @@ func scanSource(dir string, cache *HashCache, prog Progress) (*Manifest, []Warni
 		return nil, nil, err
 	}
 	var warns []Warning
+	stock := stockLiveryDirs()
 	type fileRef struct {
 		liv  int
 		rel  string
@@ -357,7 +358,7 @@ func scanSource(dir string, cache *HashCache, prog Progress) (*Manifest, []Warni
 				rel = filepath.ToSlash(rel)
 				if strings.EqualFold(rel, "description.lua") {
 					hasDesc = true
-					checkDescription(p, ld.Name(), filepath.Join(root, ad.Name()), id, &warns)
+					checkDescription(p, ld.Name(), filepath.Join(root, ad.Name()), id, stock[strings.ToLower(ad.Name())], &warns)
 				}
 				refs = append(refs, fileRef{li, rel, p, fi})
 				return nil
@@ -398,7 +399,11 @@ func scanSource(dir string, cache *HashCache, prog Progress) (*Manifest, []Warni
 
 // checkDescription catches the #1 cause of broken liveries: description.lua
 // pointing at "../Some Other Folder/" because the folder got renamed.
-func checkDescription(path, folder, aircraftDir, id string, warns *[]Warning) {
+//
+// A reference is fine when it names the livery's own folder, another livery in
+// the master library, or a folder DCS itself ships for that aircraft (stock:
+// that aircraft's livery folders in the DCS install, when there is one).
+func checkDescription(path, folder, aircraftDir, id string, stock []string, warns *[]Warning) {
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return
@@ -406,11 +411,21 @@ func checkDescription(path, folder, aircraftDir, id string, warns *[]Warning) {
 	seen := map[string]bool{}
 	for _, mm := range luaRefRe.FindAllStringSubmatch(string(b), -1) {
 		ref := mm[1]
-		if seen[ref] || ref == folder {
+		if seen[ref] || strings.EqualFold(ref, folder) {
 			continue
 		}
 		seen[ref] = true
-		if _, err := os.Stat(filepath.Join(aircraftDir, ref)); err != nil {
+		if hasFolderFold(aircraftDir, ref) || sharedLiveryFolders[strings.ToLower(ref)] {
+			continue
+		}
+		inStock := false
+		for _, d := range stock {
+			if hasFolderFold(d, ref) {
+				inStock = true
+				break
+			}
+		}
+		if !inStock {
 			*warns = append(*warns, Warning{id, "error", fmt.Sprintf(
 				"description.lua points at \"../%s/\" but the folder is named \"%s\" — textures will be missing in DCS", ref, folder)})
 		}

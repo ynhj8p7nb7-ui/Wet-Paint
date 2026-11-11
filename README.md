@@ -38,7 +38,8 @@ Wet Paint installs the Wet Boys livery library into DCS, keeps it current with s
 ## For Fridge: monthly routine
 
 1. Drop the new jets into your master `Liveries` folder as usual (`Liveries/<aircraft>/<livery>/`).
-2. Open **Wet Paint**, go to **Build Pack**, and check the fields. They're remembered from last time; *Last release* points at your `feed.json`.
+2. Open **Wet Paint**, go to **Build Pack**, and check the fields. **Check folder only** reads the master folder and lists problems (wrong aircraft folder names, broken `description.lua` references) without writing anything, so you can run it as often as you like.
+   Then, for the real build, check the fields. They're remembered from last time; *Last release* points at your `feed.json`.
 3. Hit **BUILD PACK**. **Fix anything in red** under *Problems found* before publishing:
    - a `description.lua` pointing at an old folder name;
    - an aircraft folder that looks like a typo of a real DCS name (e.g. `F-16C-50` instead of `F-16C_50`).
@@ -62,6 +63,7 @@ Wet Paint installs the Wet Boys livery library into DCS, keeps it current with s
 ```
 wetpaint build -src ~/Liveries -out ~/Desktop/wetpaint -prev ~/Desktop/wetpaint/feed.json -release 2026-12
 wetpaint build -src ~/Liveries -out ~/Desktop/wetpaint -release 2026-11 -full     # first baseline
+wetpaint build -src ~/Liveries -check                                               # only check the folder, write nothing
 WetPaint.exe update            # check + download + install + verify
 WetPaint.exe update -check     # just show what would be downloaded
 WetPaint.exe install -pack WetBoys-Liveries-2026-12-update.zip

@@ -28,6 +28,9 @@ var indexHTML string
 //go:embed assets/icon-128.png
 var iconPNG []byte
 
+//go:embed assets/fridge.webp
+var fridgeWebP []byte
+
 type Job struct {
 	ID      int       `json:"id"`
 	Kind    string    `json:"kind"` // install | scan | build
@@ -198,6 +201,11 @@ func (a *App) routes() http.Handler {
 		w.Header().Set("Content-Type", "image/png")
 		w.Header().Set("Cache-Control", "max-age=86400")
 		w.Write(iconPNG)
+	})
+	mux.HandleFunc("/fridge.webp", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/webp")
+		w.Header().Set("Cache-Control", "max-age=86400")
+		w.Write(fridgeWebP)
 	})
 	mux.HandleFunc("/api/alive", func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, "wetpaint") })
 
@@ -387,12 +395,15 @@ func (a *App) routes() http.Handler {
 			return nil, errors.New("pick your master Liveries folder")
 		}
 		a.mu.Lock()
-		a.settings.BuildSrc, a.settings.BuildOut, a.settings.BuildURL = o.Source, o.Out, o.URL
+		a.settings.BuildSrc = o.Source
+		if !o.CheckOnly {
+			a.settings.BuildOut, a.settings.BuildURL = o.Out, o.URL
+		}
 		a.settings.save()
 		a.mu.Unlock()
 		return nil, a.startJob("build", func(ctx context.Context, set func(string, int64, int64, string)) (any, error) {
 			res, err := buildPack(o, a.cache, set)
-			if err == nil && res.FeedPath != "" {
+			if err == nil && res.FeedPath != "" && !o.CheckOnly {
 				a.mu.Lock()
 				a.settings.BuildPrev = res.FeedPath
 				a.settings.save()
@@ -549,7 +560,25 @@ func (a *App) routes() http.Handler {
 		a.mu.Unlock()
 		return true, nil
 	})
-	return mux
+	return localOnly(mux)
+}
+
+// localOnly refuses requests that weren't addressed to this PC by its loopback
+// name. A web page on the internet can point its own domain name at 127.0.0.1
+// to get a browser to talk to local programs; those requests arrive with that
+// domain in the Host header, so they stop here.
+func localOnly(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		host := r.Host
+		if h, _, err := net.SplitHostPort(host); err == nil {
+			host = h
+		}
+		if host != "127.0.0.1" && !strings.EqualFold(host, "localhost") && host != "::1" {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 func firstNonEmpty(s ...string) string {
