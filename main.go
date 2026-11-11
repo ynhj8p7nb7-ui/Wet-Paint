@@ -86,6 +86,7 @@ func runCLI(args []string) error {
 		fs.StringVar(&o.Release, "release", time.Now().Format("2006-01"), "release label")
 		fs.BoolVar(&o.Full, "full", false, "ship every livery (a full master pack)")
 		fs.StringVar(&o.URL, "url", "", "public download link for this pack, if not next to feed.json")
+		fs.BoolVar(&o.CheckOnly, "check", false, "only read and check the folder; don't write a pack")
 		fs.Parse(args[1:])
 		progs := map[string]func(int64, int64, string){}
 		res, err := buildPack(o, cache, func(phase string, d, t int64, c string) {
@@ -99,6 +100,11 @@ func runCLI(args []string) error {
 		}
 		for _, w := range res.Warnings {
 			fmt.Printf("[%s] %s: %s\n", strings.ToUpper(w.Level), w.Livery, w.Message)
+		}
+		if res.CheckOnly {
+			fmt.Printf("Checked %d liveries (%s). A build would ship %d: %d new, %d changed; %d removed. Nothing was written.\n",
+				res.Total, human(res.SrcBytes), res.Shipped, len(res.New), len(res.Changed), len(res.Removed))
+			return nil
 		}
 		if res.NoChanges {
 			fmt.Println("Nothing new or changed since", o.Prev, "— no pack built.")
@@ -187,7 +193,7 @@ func runCLI(args []string) error {
 			return nil
 		}
 		progs := map[string]func(int64, int64, string){}
-		_, err = runUpdate(ctx, f, steps, d, cache, func(phase string, dd, t int64, c string) {
+		_, err = runUpdate(ctx, f, steps, d, cache, findPacks(), func(phase string, dd, t int64, c string) {
 			if progs[phase] == nil {
 				progs[phase] = cliProgress(phase)
 			}

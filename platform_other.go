@@ -22,6 +22,11 @@ func savedGamesDir() string {
 	return filepath.Join(home, "Saved Games")
 }
 
+func desktopDir() string {
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, "Desktop")
+}
+
 func downloadsDir() string {
 	home, _ := os.UserHomeDir()
 	return filepath.Join(home, "Downloads")

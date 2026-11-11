@@ -37,6 +37,9 @@ type BuildOptions struct {
 	Out     string `json:"out"`     // output folder
 	Full    bool   `json:"full"`    // ship every livery (new master pack)
 	URL     string `json:"url"`     // where the pack will be downloadable; "" = next to feed.json
+	// CheckOnly reads and checks the folder and reports what a build would
+	// ship, but writes no pack, library or feed.
+	CheckOnly bool `json:"check_only"`
 }
 
 type BuildResult struct {
@@ -53,6 +56,8 @@ type BuildResult struct {
 	Total     int       `json:"total"`
 	Warnings  []Warning `json:"warnings"`
 	NoChanges bool      `json:"no_changes"`
+	CheckOnly bool      `json:"check_only"`
+	SrcBytes  int64     `json:"src_bytes"` // size of the whole master library
 }
 
 func buildPack(o BuildOptions, cache *HashCache, prog func(phase string, done, total int64, cur string)) (*BuildResult, error) {
@@ -62,7 +67,7 @@ func buildPack(o BuildOptions, cache *HashCache, prog func(phase string, done, t
 	if strings.ContainsAny(o.Release, `/\:*?"<>|`) {
 		return nil, fmt.Errorf("release label %q can't contain / \\ : * ? \" < > |", o.Release)
 	}
-	if o.Out == "" {
+	if o.Out == "" && !o.CheckOnly {
 		return nil, errors.New("pick an output folder")
 	}
 	cur, warns, err := scanSource(o.Source, cache, func(d, t int64, c string) { prog("Reading master library", d, t, c) })
@@ -82,7 +87,7 @@ func buildPack(o BuildOptions, cache *HashCache, prog func(phase string, done, t
 		}
 	}
 	warns = append(warns, checkSourceAircraft(cur)...)
-	res := &BuildResult{Release: o.Release, Warnings: warns, Total: len(cur.Liveries)}
+	res := &BuildResult{Release: o.Release, Warnings: warns, Total: len(cur.Liveries), CheckOnly: o.CheckOnly, SrcBytes: cur.TotalSize()}
 	pidx := map[string]*Livery{}
 	if prev != nil {
 		pidx = prev.Index()
@@ -114,6 +119,13 @@ func buildPack(o BuildOptions, cache *HashCache, prog func(phase string, done, t
 	}
 	sort.Strings(res.Removed)
 	cur.Removed = res.Removed
+	if o.CheckOnly {
+		res.Shipped = len(ship)
+		for _, l := range ship {
+			res.PackBytes += l.Size() // uncompressed; the zip will be a bit smaller
+		}
+		return res, nil
+	}
 	if len(ship) == 0 {
 		res.NoChanges = true
 		return res, nil
@@ -256,6 +268,7 @@ type PackInfo struct {
 	Liveries []string  `json:"liveries"`
 	Bytes    int64     `json:"bytes"`
 	Modified time.Time `json:"modified"`
+	lib      *Manifest // the whole library index inside the pack
 }
 
 func openPack(p string) (*zip.ReadCloser, *Manifest, error) {
@@ -295,7 +308,7 @@ func inspectPack(p string) (*PackInfo, error) {
 	}
 	zr.Close()
 	fi, _ := os.Stat(p)
-	info := &PackInfo{Path: p, Name: filepath.Base(p), Release: m.Release, Kind: m.PackKind, Created: m.Created, Liveries: m.PackContains}
+	info := &PackInfo{Path: p, Name: filepath.Base(p), Release: m.Release, Kind: m.PackKind, Created: m.Created, Liveries: m.PackContains, lib: m}
 	if fi != nil {
 		info.Bytes, info.Modified = fi.Size(), fi.ModTime()
 	}

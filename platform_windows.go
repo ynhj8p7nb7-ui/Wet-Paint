@@ -5,7 +5,6 @@ package main
 import (
 	"errors"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -88,6 +87,14 @@ func savedGamesDir() string {
 	return filepath.Join(os.Getenv("USERPROFILE"), "Saved Games")
 }
 
+func desktopDir() string {
+	// Respects a Desktop that OneDrive or the user moved.
+	if p, err := windows.KnownFolderPath(windows.FOLDERID_Desktop, 0); err == nil && p != "" {
+		return p
+	}
+	return filepath.Join(os.Getenv("USERPROFILE"), "Desktop")
+}
+
 func downloadsDir() string {
 	if p, err := windows.KnownFolderPath(windows.FOLDERID_Downloads, 0); err == nil && p != "" {
 		return p
@@ -107,7 +114,23 @@ func diskFree(p string) (int64, bool) {
 	return int64(free), true
 }
 
-func revealPath(p string) { _ = exec.Command("explorer.exe", "/select,", p).Start() }
+// revealPath shows a file in File Explorer with it selected. It asks the shell
+// directly (no explorer.exe child process — see CLAUDE.md rule 1).
+func revealPath(p string) {
+	go onUIThread(func() (string, error) {
+		ptr, err := windows.UTF16PtrFromString(filepath.Clean(p))
+		if err != nil {
+			return "", err
+		}
+		pidl, _, _ := procILCreateFromPathW.Call(uintptr(unsafe.Pointer(ptr)))
+		if pidl == 0 {
+			return "", nil // doesn't exist (any more)
+		}
+		defer procILFree.Call(pidl)
+		procSHOpenFolderAndSelectItems.Call(pidl, 0, 0, 0)
+		return "", nil
+	})
+}
 
 // openWindow opens Wet Paint in the pilot's normal default browser, exactly
 // like clicking a link. Earlier versions started Edge with a private profile
@@ -136,18 +159,21 @@ func showError(msg string) {
 // PowerShell, no helper processes.
 
 var (
-	comdlg32                = windows.NewLazySystemDLL("comdlg32.dll")
-	procGetOpenFileNameW    = comdlg32.NewProc("GetOpenFileNameW")
-	shell32                 = windows.NewLazySystemDLL("shell32.dll")
-	procSHBrowseForFolder   = shell32.NewProc("SHBrowseForFolderW")
-	procSHGetPathFromIDList = shell32.NewProc("SHGetPathFromIDListW")
-	procCoTaskMemFree       = windows.NewLazySystemDLL("ole32.dll").NewProc("CoTaskMemFree")
-	user32                  = windows.NewLazySystemDLL("user32.dll")
-	procCreateWindowExW     = user32.NewProc("CreateWindowExW")
-	procDestroyWindow       = user32.NewProc("DestroyWindow")
-	procSendMessageW        = user32.NewProc("SendMessageW")
-	procGetSystemMetrics    = user32.NewProc("GetSystemMetrics")
-	procSetForegroundWindow = user32.NewProc("SetForegroundWindow")
+	comdlg32                       = windows.NewLazySystemDLL("comdlg32.dll")
+	procGetOpenFileNameW           = comdlg32.NewProc("GetOpenFileNameW")
+	shell32                        = windows.NewLazySystemDLL("shell32.dll")
+	procSHBrowseForFolder          = shell32.NewProc("SHBrowseForFolderW")
+	procSHGetPathFromIDList        = shell32.NewProc("SHGetPathFromIDListW")
+	procILCreateFromPathW          = shell32.NewProc("ILCreateFromPathW")
+	procILFree                     = shell32.NewProc("ILFree")
+	procSHOpenFolderAndSelectItems = shell32.NewProc("SHOpenFolderAndSelectItems")
+	procCoTaskMemFree              = windows.NewLazySystemDLL("ole32.dll").NewProc("CoTaskMemFree")
+	user32                         = windows.NewLazySystemDLL("user32.dll")
+	procCreateWindowExW            = user32.NewProc("CreateWindowExW")
+	procDestroyWindow              = user32.NewProc("DestroyWindow")
+	procSendMessageW               = user32.NewProc("SendMessageW")
+	procGetSystemMetrics           = user32.NewProc("GetSystemMetrics")
+	procSetForegroundWindow        = user32.NewProc("SetForegroundWindow")
 )
 
 type openFileName struct {

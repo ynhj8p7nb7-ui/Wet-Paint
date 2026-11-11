@@ -17,6 +17,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -27,6 +28,9 @@ var indexHTML string
 
 //go:embed assets/icon-128.png
 var iconPNG []byte
+
+//go:embed assets/fridge.webp
+var fridgeWebP []byte
 
 type Job struct {
 	ID      int       `json:"id"`
@@ -162,6 +166,85 @@ func (a *App) startJob(kind string, fn func(ctx context.Context, set func(phase 
 	return nil
 }
 
+// LocalState is everything found in Downloads (and the other usual places).
+type LocalState struct {
+	Packs   []PackInfo    `json:"packs"`   // Wet Paint packs
+	Plain   []PlainZip    `json:"plain"`   // ordinary livery zips, oldest first
+	Pending []PendingPack `json:"pending"` // still downloading or damaged
+	Plan    *LocalPlan    `json:"plan"`    // what the Wet Paint packs would fix
+}
+
+// localState looks for packs and livery zips saved by hand (Downloads,
+// Desktop, next to the exe, the folder of the last one picked) and works out
+// what they'd fix.
+func (a *App) localState() *LocalState {
+	a.mu.Lock()
+	dcs, last := a.settings.DCSDir, a.lastScan
+	var extra []string
+	if p := a.settings.LastPack; p != "" {
+		extra = append(extra, filepath.Dir(p))
+	}
+	a.mu.Unlock()
+	packs, plainPaths, pending := scanForPacks(extra...)
+	st := &LocalState{Packs: packs, Pending: pending, Plain: []PlainZip{}}
+	if st.Packs == nil {
+		st.Packs = []PackInfo{}
+	}
+	if st.Pending == nil {
+		st.Pending = []PendingPack{}
+	}
+	var inst *Manifest
+	if dcs != "" {
+		if m, err := loadInstalledManifest(dcs); err == nil {
+			inst = m
+		}
+		if last == nil && inst != nil {
+			var s ScanResult
+			if b, err := os.ReadFile(filepath.Join(dcs, "WetPaint", "last-scan.json")); err == nil && json.Unmarshal(b, &s) == nil {
+				last = &s
+			}
+		}
+		st.Plan = planLocal(packs, inst, last)
+	}
+	if len(plainPaths) > 0 {
+		stock := stockLiveryDirs()
+		var known map[string]string
+		if dcs != "" {
+			if in := a.selectedInstall(dcs, findDCSInstalls()); in != nil {
+				known = a.aircraftNames(in, dcs).Names
+			}
+		}
+		seen := map[string]bool{}
+		for _, p := range plainPaths {
+			z, err := inspectPlain(p, dcs, inst, a.cache, stock)
+			if err != nil {
+				continue
+			}
+			key := fmt.Sprintf("%d|%d|%s", z.Bytes, len(z.Liveries), z.Date.UTC())
+			if seen[key] { // the same zip saved twice
+				continue
+			}
+			seen[key] = true
+			if len(known) > 0 {
+				m := &Manifest{}
+				for _, l := range z.Liveries {
+					if l.State == "new" || l.State == "update" {
+						m.Liveries = append(m.Liveries, Livery{Aircraft: l.Aircraft, Folder: l.Folder})
+					}
+				}
+				for _, is := range checkAircraft(m, known) {
+					if is.Level == "error" {
+						z.Aircraft = append(z.Aircraft, is)
+					}
+				}
+			}
+			st.Plain = append(st.Plain, *z)
+		}
+		sort.SliceStable(st.Plain, func(x, y int) bool { return st.Plain[x].Date.Before(st.Plain[y].Date) })
+	}
+	return st
+}
+
 func (a *App) doScan(set func(string, int64, int64, string)) (*ScanResult, error) {
 	a.mu.Lock()
 	dcs := a.settings.DCSDir
@@ -198,6 +281,11 @@ func (a *App) routes() http.Handler {
 		w.Header().Set("Content-Type", "image/png")
 		w.Header().Set("Cache-Control", "max-age=86400")
 		w.Write(iconPNG)
+	})
+	mux.HandleFunc("/fridge.webp", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/webp")
+		w.Header().Set("Cache-Control", "max-age=86400")
+		w.Write(fridgeWebP)
 	})
 	mux.HandleFunc("/api/alive", func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, "wetpaint") })
 
@@ -274,15 +362,64 @@ func (a *App) routes() http.Handler {
 	})
 
 	api("/api/packs", func(r *http.Request) (any, error) {
-		var extra []string
-		if p := a.settings.LastPack; p != "" {
-			extra = append(extra, filepath.Dir(p))
+		return a.localState(), nil
+	})
+
+	// Install whatever the packs in Downloads can fix, oldest first.
+	api("/api/install-local", func(r *http.Request) (any, error) {
+		a.mu.Lock()
+		dcs := a.settings.DCSDir
+		a.mu.Unlock()
+		if dcs == "" {
+			return nil, errors.New("pick your DCS Saved Games folder first")
 		}
-		packs := findPacks(extra...)
-		if packs == nil {
-			packs = []PackInfo{}
-		}
-		return packs, nil
+		return nil, a.startJob("install", func(ctx context.Context, set func(string, int64, int64, string)) (any, error) {
+			set("Looking in your Downloads folder", 0, 0, "")
+			st := a.localState()
+			out := map[string]any{}
+			did := false
+			if st.Plan != nil && !st.Plan.UpToDate && len(st.Plan.Steps) > 0 {
+				ur, err := installLocal(ctx, st.Plan, dcs, a.cache, set)
+				if err != nil {
+					return nil, err
+				}
+				out["update"], did = ur, true
+				a.mu.Lock()
+				a.plan = nil // the online plan was worked out before these packs went in
+				a.mu.Unlock()
+			}
+			// Ordinary livery zips, oldest first, so a newer zip always wins.
+			var plains []*PlainResult
+			stock := stockLiveryDirs()
+			for i, z := range st.Plain {
+				if z.Work() == 0 {
+					continue
+				}
+				if ctx.Err() != nil {
+					return nil, ctx.Err()
+				}
+				inst, _ := loadInstalledManifest(dcs)
+				label := fmt.Sprintf("Installing %s", z.Name)
+				if n := len(st.Plain); n > 1 {
+					label += fmt.Sprintf(" (%d of %d)", i+1, n)
+				}
+				pr, err := installPlain(z.Path, dcs, inst, a.cache, stock, func(d, t int64, c string) { set(label, d, t, c) })
+				if err != nil {
+					return nil, fmt.Errorf("%s: %w", z.Name, err)
+				}
+				plains, did = append(plains, pr), true
+			}
+			if !did {
+				return nil, errors.New("nothing in your Downloads folder would change anything")
+			}
+			out["plain"] = plains
+			if _, err := loadInstalledManifest(dcs); err == nil {
+				sr, err := a.doScan(set)
+				out["scan"] = sr
+				return out, err
+			}
+			return out, nil
+		})
 	})
 
 	api("/api/dcs", func(r *http.Request) (any, error) {
@@ -315,7 +452,7 @@ func (a *App) routes() http.Handler {
 		case "dcs":
 			p, err = pickFolder(`Pick your DCS Saved Games folder (e.g. Saved Games\DCS)`, firstNonEmpty(q.Start, savedGamesDir()))
 		case "pack":
-			p, err = pickFile("Pick the Wet Boys livery pack (.zip)", firstNonEmpty(q.Start, downloadsDir()), "Livery pack (*.zip)|*.zip")
+			p, err = pickFile("Pick a Wet Boys livery pack or livery zip (.zip)", firstNonEmpty(q.Start, downloadsDir()), "Livery pack (*.zip)|*.zip")
 		case "src":
 			p, err = pickFolder("Pick your master Liveries folder", q.Start)
 		case "out":
@@ -333,8 +470,23 @@ func (a *App) routes() http.Handler {
 		if err := body(r, &q); err != nil {
 			return nil, err
 		}
-		info, err := inspectPack(strings.Trim(strings.TrimSpace(q.Path), `"`))
+		p := strings.Trim(strings.TrimSpace(q.Path), `"`)
+		info, err := inspectPack(p)
 		if err != nil {
+			// An ordinary livery zip (how releases usually travel on Discord)?
+			a.mu.Lock()
+			dcs := a.settings.DCSDir
+			a.mu.Unlock()
+			inst, _ := loadInstalledManifest(dcs)
+			if z, perr := inspectPlain(p, dcs, inst, a.cache, stockLiveryDirs()); perr == nil {
+				a.mu.Lock()
+				a.settings.LastPack = p
+				a.settings.save()
+				a.mu.Unlock()
+				return map[string]any{"plain": z}, nil
+			} else if errors.Is(perr, errNotLiveryZip) && strings.Contains(perr.Error(), ": ") {
+				return nil, fmt.Errorf("%s isn't a livery zip: %s", filepath.Base(p), strings.SplitN(perr.Error(), ": ", 2)[1])
+			}
 			return nil, err
 		}
 		a.mu.Lock()
@@ -387,12 +539,15 @@ func (a *App) routes() http.Handler {
 			return nil, errors.New("pick your master Liveries folder")
 		}
 		a.mu.Lock()
-		a.settings.BuildSrc, a.settings.BuildOut, a.settings.BuildURL = o.Source, o.Out, o.URL
+		a.settings.BuildSrc = o.Source
+		if !o.CheckOnly {
+			a.settings.BuildOut, a.settings.BuildURL = o.Out, o.URL
+		}
 		a.settings.save()
 		a.mu.Unlock()
 		return nil, a.startJob("build", func(ctx context.Context, set func(string, int64, int64, string)) (any, error) {
 			res, err := buildPack(o, a.cache, set)
-			if err == nil && res.FeedPath != "" {
+			if err == nil && res.FeedPath != "" && !o.CheckOnly {
 				a.mu.Lock()
 				a.settings.BuildPrev = res.FeedPath
 				a.settings.save()
@@ -463,7 +618,8 @@ func (a *App) routes() http.Handler {
 			steps = plan.FullOption.Steps
 		}
 		return nil, a.startJob("update", func(ctx context.Context, set func(string, int64, int64, string)) (any, error) {
-			ur, err := runUpdate(ctx, f, steps, dcs, a.cache, set)
+			set("Looking in your Downloads folder", 0, 0, "")
+			ur, err := runUpdate(ctx, f, steps, dcs, a.cache, a.localState().Packs, set)
 			if err != nil {
 				return nil, err
 			}
@@ -549,7 +705,25 @@ func (a *App) routes() http.Handler {
 		a.mu.Unlock()
 		return true, nil
 	})
-	return mux
+	return localOnly(mux)
+}
+
+// localOnly refuses requests that weren't addressed to this PC by its loopback
+// name. A web page on the internet can point its own domain name at 127.0.0.1
+// to get a browser to talk to local programs; those requests arrive with that
+// domain in the Host header, so they stop here.
+func localOnly(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		host := r.Host
+		if h, _, err := net.SplitHostPort(host); err == nil {
+			host = h
+		}
+		if host != "127.0.0.1" && !strings.EqualFold(host, "localhost") && host != "::1" {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 func firstNonEmpty(s ...string) string {

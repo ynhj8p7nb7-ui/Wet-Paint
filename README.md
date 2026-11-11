@@ -27,6 +27,8 @@ Wet Paint installs the Wet Boys livery library into DCS, keeps it current with s
 - **Steam or standalone?** Both work. Liveries always go in `Saved Games\DCS\Liveries`. Wet Paint also finds your DCS install (from the Eagle Dynamics registry entry, every Steam library, or common folders) so it can check the aircraft folder names. If it picks the wrong one, hit **Change…** under *DCS install*.
 - **Red "Folder names DCS won't recognise" box?** A jet's aircraft folder doesn't match what your DCS calls that aircraft, so it won't show in game. Tell Fridge; the box shows both spellings.
 - **"Aircraft isn't installed in your DCS"?** Normal for modules or mods you don't own. Those liveries appear once you install the aircraft.
+- **Got liveries in an ordinary zip on Discord** (like `Livery Release 11426.zip`, holding `<aircraft>/<livery>` folders)? Save it to Downloads and don't unzip it. Wet Paint lists every livery in it as *new*, *updated* or *already installed*, and **Install from Downloads** copies only new or changed files into the right aircraft folders. It also warns about aircraft folder names DCS won't recognise, and about liveries that borrow textures from a base livery you don't have. It remembers which zip each livery came from, so an older zip never replaces a newer livery. Liveries that are part of the verified Wet Paint library are left to the verified packs.
+- **Got a Wet Paint pack on Discord (or a Drive link, or from a squadron mate)?** Save the zip to your Downloads folder and don't unzip it. Wet Paint spots it within a few seconds, even while it's open, and shows **Found in your Downloads**: it works out which of the packs there are actually needed, installs them oldest first and verifies. Saving the same pack twice ("… (1).zip") is fine, and a zip that's still downloading is reported, not installed. *Update now* also uses a pack that's already in Downloads instead of downloading it again. Wet Paint never moves or deletes your zips.
 - **Offline or behind a firewall?** Open *Install a pack file by hand*, pick a downloaded pack zip and hit **Install & Verify**.
 - **A small black window opens with it.** That's Wet Paint itself. It shows the address of the page in your browser. Leave it open while it works; close it to quit.
 - **Antivirus or "Windows protected your PC" warning?** See [Antivirus & trust](#antivirus--trust) below. Only run a `WetPaint.exe` downloaded from flywetboys.com whose SHA-256 matches the one published there.
@@ -38,7 +40,8 @@ Wet Paint installs the Wet Boys livery library into DCS, keeps it current with s
 ## For Fridge: monthly routine
 
 1. Drop the new jets into your master `Liveries` folder as usual (`Liveries/<aircraft>/<livery>/`).
-2. Open **Wet Paint**, go to **Build Pack**, and check the fields. They're remembered from last time; *Last release* points at your `feed.json`.
+2. Open **Wet Paint**, go to **Build Pack**, and check the fields. **Check folder only** reads the master folder and lists problems (wrong aircraft folder names, broken `description.lua` references) without writing anything, so you can run it as often as you like.
+   Then, for the real build, check the fields. They're remembered from last time; *Last release* points at your `feed.json`.
 3. Hit **BUILD PACK**. **Fix anything in red** under *Problems found* before publishing:
    - a `description.lua` pointing at an old folder name;
    - an aircraft folder that looks like a typo of a real DCS name (e.g. `F-16C-50` instead of `F-16C_50`).
@@ -62,6 +65,7 @@ Wet Paint installs the Wet Boys livery library into DCS, keeps it current with s
 ```
 wetpaint build -src ~/Liveries -out ~/Desktop/wetpaint -prev ~/Desktop/wetpaint/feed.json -release 2026-12
 wetpaint build -src ~/Liveries -out ~/Desktop/wetpaint -release 2026-11 -full     # first baseline
+wetpaint build -src ~/Liveries -check                                               # only check the folder, write nothing
 WetPaint.exe update            # check + download + install + verify
 WetPaint.exe update -check     # just show what would be downloaded
 WetPaint.exe install -pack WetBoys-Liveries-2026-12-update.zip
