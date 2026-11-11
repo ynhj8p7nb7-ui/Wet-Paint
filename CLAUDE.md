@@ -67,7 +67,7 @@ Windows (needs Go: `winget install GoLang.Go`):
 build.cmd                 :: vet + tests + dist\WetPaint.exe
 go test ./...
 ```
-Mac/Linux: `./build.sh 1.3.0` (Mac also makes `Wet Paint.app`).
+Mac/Linux: `./build.sh 1.3.1` (Mac also makes `Wet Paint.app`).
 
 Useful environment variables for testing without touching your real DCS:
 `WETPAINT_SAVED_GAMES`, `WETPAINT_DCS_INSTALL`, `WETPAINT_CONFIG`, `WETPAINT_DOWNLOADS`,

@@ -134,7 +134,7 @@ Versions **1.0–1.2** (before 9 Nov 2026) were flagged by Microsoft Defender, a
 Needs Go 1.23+ (`winget install GoLang.Go` on Windows, or https://go.dev/dl/).
 
 - **Windows:** double-click `build.cmd` (vet, tests, then `dist\WetPaint.exe`), or `Run Wet Paint (build from source).cmd` to build and start it.
-- **Mac:** `./build.sh 1.3.0` makes `dist/WetPaint.exe`, `dist/Wet Paint.app` and `dist/WetPaint-mac.zip`.
+- **Mac:** `./build.sh 1.3.1` makes `dist/WetPaint.exe`, `dist/Wet Paint.app` and `dist/WetPaint-mac.zip`.
 - **GitHub:** every push runs `.github/workflows/build.yml`, which tests on real Windows and macOS and attaches a freshly built `WetPaint.exe` to the run.
 - `go test ./...` runs the tests anywhere. Working on the code with Claude? It reads `CLAUDE.md` first.
 

@@ -1,4 +1,4 @@
-WET PAINT 1.3.0 - START HERE
+WET PAINT 1.3.1 - START HERE
 ============================
 
 Wet Paint installs and updates the Wet Boys (CVW-0) DCS liveries for you and

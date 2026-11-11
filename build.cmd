@@ -2,14 +2,14 @@
 rem ------------------------------------------------------------------
 rem  Build Wet Paint from source on Windows.
 rem  Needs Go (free):   winget install GoLang.Go
-rem  Usage:  build.cmd            (version 1.3.0)
+rem  Usage:  build.cmd            (version 1.3.1)
 rem          build.cmd 1.3.1      (stamp a different version)
 rem  Output: dist\WetPaint.exe  +  its SHA-256 fingerprint
 rem ------------------------------------------------------------------
 setlocal
 cd /d "%~dp0"
 set "VERSION=%~1"
-if "%VERSION%"=="" set "VERSION=1.3.0"
+if "%VERSION%"=="" set "VERSION=1.3.1"
 
 where go >nul 2>nul
 if errorlevel 1 (

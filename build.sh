@@ -3,7 +3,7 @@
 # Needs Go 1.23+ on PATH (https://go.dev/dl/). Output goes to dist/.
 set -euo pipefail
 cd "$(dirname "$0")"
-VERSION="${1:-1.0.0}"
+VERSION="${1:-1.3.1}"
 LD="-s -w -X main.version=$VERSION"
 rm -rf dist && mkdir -p dist
 
