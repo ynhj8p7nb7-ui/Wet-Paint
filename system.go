@@ -121,63 +121,151 @@ func normalizeDCSDir(p string) string {
 
 // ---------------------------------------------------------------- finding packs
 
-// findPacks looks in the usual places a pilot's browser drops a download, plus
-// next to WetPaint.exe, for zips that contain a wetpaint.json.
-func findPacks(extra ...string) []PackInfo {
-	home, _ := os.UserHomeDir()
-	dirs := []string{downloadsDir(), filepath.Join(home, "Desktop")}
+// PendingPack is a file that looks like a Wet Boys pack but can't be used
+// yet: still downloading (Discord, Chrome, Edge, Firefox) or cut short.
+type PendingPack struct {
+	Name   string `json:"name"`
+	Path   string `json:"path"`
+	Reason string `json:"reason"`
+}
+
+// packDirs are the folders searched for packs: where browsers and Discord
+// save downloads, the Desktop, and the folder WetPaint.exe sits in.
+func packDirs(extra ...string) []string {
+	if d := os.Getenv("WETPAINT_PACKS_DIR"); d != "" { // tests
+		return append([]string{d}, extra...)
+	}
+	dirs := []string{downloadsDir(), desktopDir()}
 	if exe, err := os.Executable(); err == nil {
 		dirs = append(dirs, filepath.Dir(exe))
 	}
-	dirs = append(dirs, extra...)
-	seen := map[string]bool{}
+	return append(dirs, extra...)
+}
+
+// looksLikePack reports whether a file name looks like one of Fridge's packs,
+// including browser/Discord renames like "… (1).zip".
+func looksLikePack(name string) bool {
+	l := strings.ToLower(name)
+	return strings.Contains(l, "wetboys-liveries") || strings.Contains(l, "wetboys liveries") || strings.Contains(l, "wetpaint")
+}
+
+// Extensions browsers use while a download is still running.
+var partialExts = map[string]bool{".crdownload": true, ".part": true, ".partial": true, ".download": true, ".opdownload": true, ".tmp": true}
+
+// findPacks lists the Wet Boys packs in the usual download places.
+func findPacks(extra ...string) []PackInfo {
+	p, _, _ := scanForPacks(extra...)
+	return p
+}
+
+// scanForPacks looks for zips that contain a wetpaint.json, newest first.
+// The same pack saved twice ("pack.zip" and "pack (1).zip") is listed once.
+// Ordinary livery zips (no wetpaint.json, see plain.go) are returned as plain.
+// Files that look like a pack but can't be opened yet are returned as pending.
+func scanForPacks(extra ...string) ([]PackInfo, []string, []PendingPack) {
+	seenPath := map[string]bool{}
+	seenPack := map[string]bool{}
 	var out []PackInfo
+	var plain []string
+	var pending []PendingPack
 	cutoff := time.Now().AddDate(-2, 0, 0)
-	for _, d := range dirs {
+	for _, d := range packDirs(extra...) {
+		if d == "" {
+			continue
+		}
 		ents, err := os.ReadDir(d)
 		if err != nil {
 			continue
 		}
-		checked := 0
+		type cand struct {
+			path string
+			fi   os.FileInfo
+		}
+		var zips []cand
 		for _, e := range ents {
-			if e.IsDir() || !strings.EqualFold(filepath.Ext(e.Name()), ".zip") {
+			if e.IsDir() {
 				continue
 			}
-			p := filepath.Join(d, e.Name())
-			key := strings.ToLower(p)
-			if seen[key] {
+			name := e.Name()
+			ext := strings.ToLower(filepath.Ext(name))
+			p := filepath.Join(d, name)
+			if seenPath[strings.ToLower(p)] {
 				continue
 			}
-			seen[key] = true
+			seenPath[strings.ToLower(p)] = true
+			if partialExts[ext] && (looksLikePack(name) || looksLikeLiveries(name)) {
+				pending = append(pending, PendingPack{name, p, "still downloading"})
+				continue
+			}
+			if ext != ".zip" {
+				continue
+			}
 			fi, err := e.Info()
 			if err != nil || fi.ModTime().Before(cutoff) {
 				continue
 			}
-			if checked++; checked > 300 {
-				break
-			}
-			if !zipHasManifest(p) {
+			zips = append(zips, cand{p, fi})
+		}
+		// Newest first, so a busy Downloads folder can't push this month's pack
+		// past the limit just because "WetBoys…" sorts late in the alphabet.
+		sort.Slice(zips, func(a, b int) bool { return zips[a].fi.ModTime().After(zips[b].fi.ModTime()) })
+		if len(zips) > 300 {
+			zips = zips[:300]
+		}
+		for _, z := range zips {
+			ok, opened := zipHasManifest(z.path)
+			if !ok {
+				if opened && isPlainLiveryZip(z.path) {
+					plain = append(plain, z.path)
+				} else if !opened && (looksLikePack(filepath.Base(z.path)) || looksLikeLiveries(filepath.Base(z.path))) {
+					pending = append(pending, PendingPack{filepath.Base(z.path), z.path, "incomplete or damaged"})
+				}
 				continue
 			}
-			if info, err := inspectPack(p); err == nil {
-				out = append(out, *info)
+			info, err := inspectPack(z.path)
+			if err != nil {
+				continue
 			}
+			key := info.Release + "|" + info.Kind + "|" + info.Created.UTC().Format(time.RFC3339Nano)
+			if seenPack[key] {
+				continue
+			}
+			seenPack[key] = true
+			out = append(out, *info)
 		}
 	}
-	sort.Slice(out, func(a, b int) bool { return out[a].Created.After(out[b].Created) })
-	return out
+	sort.SliceStable(out, func(a, b int) bool { return out[a].Created.After(out[b].Created) })
+	return out, plain, pending
 }
 
-func zipHasManifest(p string) bool {
-	zr, err := zip.OpenReader(p) // only reads the central directory — cheap even for 20 GB
+func isPlainLiveryZip(p string) bool {
+	zr, err := zip.OpenReader(p)
 	if err != nil {
 		return false
 	}
 	defer zr.Close()
+	_, err = readPlainZip(&zr.Reader)
+	return err == nil
+}
+
+// looksLikeLiveries guesses from a file name that it's a livery download.
+func looksLikeLiveries(name string) bool {
+	l := strings.ToLower(name)
+	return strings.Contains(l, "livery") || strings.Contains(l, "liveries") || strings.Contains(l, "wet")
+}
+
+// zipHasManifest reports whether p is a zip containing wetpaint.json, and
+// whether it could be opened as a zip at all (a half-downloaded zip can't).
+func zipHasManifest(p string) (has, opened bool) {
+	zr, err := zip.OpenReader(p) // only reads the central directory — cheap even for 20 GB
+	if err != nil {
+		return false, false
+	}
+	defer zr.Close()
 	for _, f := range zr.File {
 		if f.Name == manifestName {
-			return true
+			return true, true
 		}
 	}
-	return false
+	return false, true
 }

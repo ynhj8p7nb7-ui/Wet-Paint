@@ -531,16 +531,23 @@ type UpdateResult struct {
 	Unchanged int         `json:"unchanged"`
 	Bytes     int64       `json:"bytes"`
 	Scan      *ScanResult `json:"scan"`
+	// FromDownloads lists releases installed from a pack already on disk.
+	FromDownloads []string `json:"from_downloads,omitempty"`
 }
 
 // runUpdate downloads and installs the given plan steps, then verifies.
-func runUpdate(ctx context.Context, f *Feed, steps []FeedPack, dcs string, cache *HashCache, set func(string, int64, int64, string)) (*UpdateResult, error) {
+// A step whose pack is already on disk (local, e.g. saved from Discord into
+// Downloads) is installed from there instead of being downloaded again; the
+// pilot's own copy is never deleted.
+func runUpdate(ctx context.Context, f *Feed, steps []FeedPack, dcs string, cache *HashCache, local []PackInfo, set func(string, int64, int64, string)) (*UpdateResult, error) {
 	if len(steps) == 0 {
 		return nil, errors.New("nothing to download")
 	}
 	var dl, extract int64
 	for _, s := range steps {
-		dl += s.Bytes
+		if localCopy(s, local) == "" {
+			dl += s.Bytes
+		}
 	}
 	idx := f.Library.Index()
 	for _, s := range steps {
@@ -563,21 +570,46 @@ func runUpdate(ctx context.Context, f *Feed, steps []FeedPack, dcs string, cache
 	}
 
 	res := &UpdateResult{}
-	var paths []string
-	for i, s := range steps {
+	download := func(i int) (string, error) {
+		s := steps[i]
 		label := fmt.Sprintf("Downloading %s %s (%d of %d)", s.Release, map[string]string{"full": "full pack", "update": "update"}[s.Kind], i+1, len(steps))
-		p, err := downloadPack(ctx, s, func(d, t int64) { set(label, d, t, filepath.Base(s.URL)) })
+		return downloadPack(ctx, s, func(d, t int64) { set(label, d, t, filepath.Base(s.URL)) })
+	}
+	var paths []string
+	fromDisk := make([]bool, len(steps))
+	for i, s := range steps {
+		if p := localCopy(s, local); p != "" {
+			paths, fromDisk[i] = append(paths, p), true
+			res.FromDownloads = append(res.FromDownloads, s.Release)
+			continue
+		}
+		p, err := download(i)
 		if err != nil {
 			return nil, err
 		}
 		paths = append(paths, p)
 	}
-	for i, p := range paths {
+	for i := range paths {
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
 		label := fmt.Sprintf("Installing %s (%d of %d)", steps[i].Release, i+1, len(paths))
-		ir, _, err := installPack(p, dcs, cache, func(d, t int64, c string) { set(label, d, t, c) })
+		ir, _, err := installPack(paths[i], dcs, cache, func(d, t int64, c string) { set(label, d, t, c) })
+		if err != nil && fromDisk[i] && ctx.Err() == nil {
+			// The copy in Downloads is damaged: fetch a fresh one and use that.
+			p, derr := download(i)
+			if derr != nil {
+				return nil, fmt.Errorf("%v; downloading a fresh copy also failed: %w", err, derr)
+			}
+			paths[i], fromDisk[i] = p, false
+			res.FromDownloads = res.FromDownloads[:0]
+			for j := range steps {
+				if fromDisk[j] {
+					res.FromDownloads = append(res.FromDownloads, steps[j].Release)
+				}
+			}
+			ir, _, err = installPack(p, dcs, cache, func(d, t int64, c string) { set(label, d, t, c) })
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -587,9 +619,12 @@ func runUpdate(ctx context.Context, f *Feed, steps []FeedPack, dcs string, cache
 		res.Unchanged += ir.Unchanged
 		res.Bytes += ir.Bytes
 	}
-	// Installed fine: the zips aren't needed any more (the full pack is huge).
-	for _, p := range paths {
-		os.Remove(p)
+	// Installed fine: the zips we downloaded aren't needed any more (the full
+	// pack is huge). Packs the pilot saved themselves stay where they are.
+	for i, p := range paths {
+		if !fromDisk[i] {
+			os.Remove(p)
+		}
 	}
 	return res, nil
 }

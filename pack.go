@@ -268,6 +268,7 @@ type PackInfo struct {
 	Liveries []string  `json:"liveries"`
 	Bytes    int64     `json:"bytes"`
 	Modified time.Time `json:"modified"`
+	lib      *Manifest // the whole library index inside the pack
 }
 
 func openPack(p string) (*zip.ReadCloser, *Manifest, error) {
@@ -307,7 +308,7 @@ func inspectPack(p string) (*PackInfo, error) {
 	}
 	zr.Close()
 	fi, _ := os.Stat(p)
-	info := &PackInfo{Path: p, Name: filepath.Base(p), Release: m.Release, Kind: m.PackKind, Created: m.Created, Liveries: m.PackContains}
+	info := &PackInfo{Path: p, Name: filepath.Base(p), Release: m.Release, Kind: m.PackKind, Created: m.Created, Liveries: m.PackContains, lib: m}
 	if fi != nil {
 		info.Bytes, info.Modified = fi.Size(), fi.ModTime()
 	}

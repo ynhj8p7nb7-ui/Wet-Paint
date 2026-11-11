@@ -193,7 +193,7 @@ func runCLI(args []string) error {
 			return nil
 		}
 		progs := map[string]func(int64, int64, string){}
-		_, err = runUpdate(ctx, f, steps, d, cache, func(phase string, dd, t int64, c string) {
+		_, err = runUpdate(ctx, f, steps, d, cache, findPacks(), func(phase string, dd, t int64, c string) {
 			if progs[phase] == nil {
 				progs[phase] = cliProgress(phase)
 			}

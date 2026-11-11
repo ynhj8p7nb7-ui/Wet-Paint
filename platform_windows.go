@@ -87,6 +87,14 @@ func savedGamesDir() string {
 	return filepath.Join(os.Getenv("USERPROFILE"), "Saved Games")
 }
 
+func desktopDir() string {
+	// Respects a Desktop that OneDrive or the user moved.
+	if p, err := windows.KnownFolderPath(windows.FOLDERID_Desktop, 0); err == nil && p != "" {
+		return p
+	}
+	return filepath.Join(os.Getenv("USERPROFILE"), "Desktop")
+}
+
 func downloadsDir() string {
 	if p, err := windows.KnownFolderPath(windows.FOLDERID_Downloads, 0); err == nil && p != "" {
 		return p

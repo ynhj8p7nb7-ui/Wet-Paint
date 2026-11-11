@@ -131,6 +131,15 @@ details.manual { margin-top:18px; }
 .install .t b { display:block; font-family:var(--mono); font-size:10.5px; letter-spacing:.14em; color:var(--dim); font-weight:400; text-transform:uppercase; }
 .install .t span { display:block; font-family:var(--mono); font-size:11.5px; color:var(--paper); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .pill.info { color:var(--paper); }
+.card.found { margin-top:18px; border-color:#6a4d22; background:linear-gradient(90deg,#17120a,var(--panel) 60%); }
+.card.found .head .num { color:var(--amber-bright); }
+.steps li small { color:var(--dim); }
+.card.found .zip { border-top:1px solid var(--line); padding-top:12px; margin-top:12px; }
+.card.found .zip:first-of-type { border-top:0; margin-top:0; padding-top:0; }
+.card.found .zt { display:flex; gap:12px; align-items:baseline; flex-wrap:wrap; }
+.card.found .zt b { font-family:var(--mono); font-size:13px; }
+.card.found .zt span { color:var(--dim); font-size:12.5px; }
+.card.found .notice { margin-top:10px; }
 details.manual > summary { cursor:pointer; font-family:var(--head); font-weight:600; letter-spacing:.16em; text-transform:uppercase; font-size:12px; color:var(--dim); padding:12px 0; list-style:none; }
 details.manual > summary::before { content:"▸ "; color:var(--amber); }
 details.manual[open] > summary::before { content:"▾ "; }
@@ -181,6 +190,8 @@ details.manual[open] > summary::before { content:"▾ "; }
     <div class="side"><button class="btn ghost" id="btnScan">Verify now</button></div>
   </div>
 
+  <div id="localI"></div>
+
   <div class="grid">
     <div class="card">
       <div class="head"><span class="num">01</span><h2>DCS folder</h2></div>
@@ -206,7 +217,7 @@ details.manual[open] > summary::before { content:"▾ "; }
       <div class="head"><span class="num">↳</span><h2>Livery pack file</h2><button class="btn ghost" id="btnRefresh" title="Look in Downloads again">Refresh</button></div>
       <div class="packs" id="packs"></div>
       <div class="row" style="margin-top:8px"><button class="btn" id="btnPickPack">Choose pack…</button></div>
-      <p class="hint">For when you're offline, or someone handed you a pack zip. Wet Paint finds packs in your Downloads folder by itself, so don't unzip them.</p>
+      <p class="hint">Got liveries on Discord? Save the zip to your Downloads folder (don't unzip it) and Wet Paint finds it by itself, even while it's open. That works for Wet Paint packs and for ordinary livery zips. Saved it somewhere else? Use Choose pack…</p>
     </div>
     <div class="actions">
       <div>
@@ -284,6 +295,10 @@ async function api(path, body) {
 }
 
 let S = {}, packs = [], selPack = null, jobBusy = false;
+let local = null, pending = [], plains = [], packsLoadedAt = 0, localNote = "";
+const localReady = () => !!(S.dcs_dir && local && !local.up_to_date && local.steps?.length);
+const plainWork = () => S.dcs_dir ? plains.filter(z => z.new + z.updates > 0) : [];
+const localWork = () => localReady() || plainWork().length > 0;
 
 // ------------------------------------------------------------ tabs
 document.querySelectorAll("nav button").forEach(b => b.onclick = () => showTab(b.dataset.tab));
@@ -361,9 +376,32 @@ function renderHero() {
   const h = $("#hero"), inst = S.installed, plan = S.plan, scan = plan?.scan || S.last_scan;
   let state = "grey", tag = "// Livery status", title, text, meta = "";
   if (!S.dcs_dir) { title = "No DCS folder"; text = "Pick your DCS Saved Games folder below."; }
-  else if (!inst && !plan) { title = "No Wet Boys liveries yet"; text = S.auto_check ? "Checking flywetboys.com…" : "Hit Check now to download the Wet Boys library."; }
+  else if (!inst && localWork()) { state = "amber"; tag = "// Found in Downloads"; title = "Ready to install"; text = localReady() ? `The ${local.latest} pack is in your Downloads folder. Hit Install from Downloads below.` : `New liveries are in ${plainWork().length === 1 ? esc(plainWork()[0].name) : "your Downloads folder"}. Hit Install from Downloads below.`; }
+  else if (!inst && !plan && plains.length) {
+    state = "green"; tag = "// Installed"; title = "Liveries installed";
+    text = `Everything in ${plains.length === 1 ? plains[0].name : `your ${plains.length} livery zips`} is installed. Wet Paint can fully verify every jet once the library is published as Wet Paint packs.`;
+    meta = `${plural(plains.reduce((a, z) => a + z.liveries.length, 0), "livery")} checked against your Downloads`;
+  }
+  else if (!inst && !plan) {
+    title = S.dcs?.has_liveries ? "Not set up yet" : "No Wet Boys liveries yet";
+    text = S.feed_error
+      ? "Nothing is published on flywetboys.com yet. Got a pack zip from Discord? Save it to your Downloads folder (don't unzip it) and Wet Paint finds it here."
+      : jobBusy || S.auto_check ? "Checking flywetboys.com…" : "Hit Check now to download the Wet Boys library.";
+    if (S.dcs?.has_liveries) text = "Your Liveries folder has jets, but none were installed with Wet Paint yet, so there's nothing to verify against. " + text;
+  }
   else if (!inst && plan) { state = "amber"; tag = "// Welcome aboard"; title = "Library not installed"; text = "Download the Wet Boys library on the right. If you already unzipped the old master pack, Wet Paint only fetches what's missing."; }
   else if (!scan) { title = "Not verified"; text = `Release ${inst.release} is on record but hasn't been checked yet.`; meta = `${plural(inst.liveries,"livery")} · ${human(inst.bytes)}`; }
+  else if (plainWork().length && (!localReady() || !local.newer) && (!scan || scan.up_to_date)) {
+    state = "amber"; tag = "// Found in Downloads"; title = "New liveries";
+    const n = plainWork().reduce((a, z) => a + z.new + z.updates, 0);
+    text = `${plural(n, "livery")} in ${plainWork().length === 1 ? plainWork()[0].name : "your Downloads folder"} ${n === 1 ? "isn't" : "aren't"} installed yet. Hit Install from Downloads below.`;
+    meta = scan?.up_to_date ? `verified library: release ${scan.release}, up to date` : "";
+  }
+  else if (localReady() && local.newer) {
+    state = "amber"; tag = "// New release"; title = "Update ready";
+    text = `Release ${local.latest} is in your Downloads folder. ` + (plan?.steps?.length && local.missing?.length ? "Hit Update now: it uses that pack and downloads only what's still missing." : "Hit Install from Downloads below.");
+    meta = `installed: ${inst.release}`;
+  }
   else if (scan.up_to_date) {
     state = "green"; tag = "// Green light"; title = "Up to date";
     text = `Every Wet Boys jet is installed and matches release ${scan.release}. You're good to fly.`;
@@ -371,7 +409,7 @@ function renderHero() {
   } else {
     state = "amber"; tag = "// Action needed"; title = "Update needed";
     const bad = scan.total - scan.ok;
-    text = `${bad} of ${scan.total} liveries are missing or out of date. ` + (plan && plan.steps?.length ? "Hit Update now to fix it." : scan.need_packs?.length ? `Install the ${scan.need_packs.join(", ")} pack${scan.need_packs.length > 1 ? "s" : ""}.` : "");
+    text = `${bad} of ${scan.total} liveries are missing or out of date. ` + (localReady() ? "The fix is in your Downloads folder: hit Install from Downloads." : plan && plan.steps?.length ? "Hit Update now to fix it." : scan.need_packs?.length ? `Install the ${scan.need_packs.join(", ")} pack${scan.need_packs.length > 1 ? "s" : ""}.` : "");
     meta = `release ${scan.release} · verified ${ago(scan.scanned)}`;
   }
   if (jobBusy) { state = "busy"; }
@@ -383,7 +421,12 @@ function renderHero() {
 }
 
 async function loadPacks() {
-  try { packs = (await api("/api/packs")) || []; } catch (e) { packs = []; }
+  packsLoadedAt = Date.now();
+  try {
+    const r = await api("/api/packs");
+    packs = r.packs || []; pending = r.pending || []; local = r.plan || null; plains = r.plain || [];
+  } catch (e) { packs = []; pending = []; local = null; plains = []; }
+  renderLocal(); renderHero();
   const want = S.arg_pack || new URLSearchParams(location.search).get("pack");
   if (want && !packs.some(p => p.path === want)) await choosePack(want, true);
   else {
@@ -393,15 +436,70 @@ async function loadPacks() {
   }
 }
 
+// Packs and livery zips saved by hand (Discord, Drive, a squadron mate) into Downloads.
+function renderLocal() {
+  const el = $("#localI");
+  let body = "", jets = 0;
+  if (localReady()) {
+    const s = local.steps, one = s.length === 1;
+    jets += local.jets;
+    const what = local.newer ? `Release <b>${esc(local.latest)}</b> of the verified library is here.` : `The verified library packs here fix ${plural(local.jets, "jet")}.`;
+    body += `<p style="margin:0 0 12px;color:var(--paper)">${what} Wet Paint installs ${one ? "it" : `these ${s.length} packs, oldest first`}.</p>
+      <ul class="steps">${s.map(p => `<li><span>${esc(p.release)} ${p.kind === "full" ? "full pack" : "update"} · ${plural(p.liveries.length, "jet")} <small>${esc(p.name)}</small></span><span>${human(p.bytes)}</span></li>`).join("")}</ul>
+      ${local.missing?.length ? `<div class="notice" style="margin:0 0 12px">${plural(local.missing.length, "jet")} ${local.missing.length === 1 ? "needs" : "need"} a pack that isn't in Downloads: ${local.missing.slice(0, 4).map(esc).join(", ")}${local.missing.length > 4 ? "…" : ""}. ${S.plan?.steps?.length ? "Update now will download it." : "Grab the missing month's pack too."}</div>` : ""}`;
+  }
+  const stateCls = { new: "warn", update: "warn", installed: "ok", skipped: "" };
+  const stateTxt = { new: "new", update: "update", installed: "installed", skipped: "skipped" };
+  for (const z of plainWork()) {
+    jets += z.new + z.updates;
+    const counts = [z.new && `${z.new} new`, z.updates && `${z.updates} updated`, z.current && `${z.current} already installed`, z.skipped && `${z.skipped} skipped`].filter(Boolean).join(", ");
+    const needs = z.liveries.filter(l => l.needs?.length && (l.state === "new" || l.state === "update"));
+    const bases = [...new Set(needs.flatMap(l => l.needs.map(n => `${l.aircraft} / ${n}`)))];
+    body += `<div class="zip"><div class="zt"><b>${esc(z.name)}</b><span>${counts} · ${human(z.bytes)}</span></div>
+      <details><summary>Show the ${plural(z.liveries.length, "livery", "liveries")}</summary><table>
+        <tr><th>Livery</th><th>Aircraft</th><th>Status</th></tr>
+        ${z.liveries.map(l => `<tr><td>${esc(l.folder)}${l.note ? `<small>${esc(l.note)}</small>` : ""}${l.needs?.length ? `<small>uses textures from ${l.needs.map(esc).join(", ")}</small>` : ""}</td><td class="mono">${esc(l.aircraft)}</td><td><span class="pill ${stateCls[l.state] || ""}">${stateTxt[l.state] || esc(l.state)}</span></td></tr>`).join("")}
+      </table></details>
+      ${(z.aircraft || []).map(i => `<div class="notice" style="border-color:var(--red)">Aircraft folder <b>${esc(i.aircraft)}</b> doesn't match DCS's <b>${esc(i.suggest)}</b>, so DCS won't show ${plural(i.liveries.length, "livery", "liveries")} in it. Tell whoever made the zip.</div>`).join("")}
+      ${bases.length ? `<div class="notice">${plural(needs.length, "livery", "liveries")} borrow${needs.length === 1 ? "s" : ""} shared textures from ${bases.length === 1 ? "a folder" : "folders"} you don't have: <b>${bases.map(esc).join("</b>, <b>")}</b>. They'll install, but parts may look plain in DCS until that base livery is installed too.</div>` : ""}
+    </div>`;
+  }
+  let html = "";
+  if (body) {
+    html = `<div class="card found"><div class="head"><span class="num">↓</span><h2>Found in your Downloads</h2><span class="pill warn">${plural(jets, "livery", "liveries")}</span></div>
+      ${body}
+      <div class="row" style="margin-top:14px"><button class="btn primary" id="btnInstallLocal">Install from Downloads</button><span class="hint" style="margin:0">Close DCS first. Only new or changed files are copied, and your zips stay where they are.</span></div>
+    </div>`;
+  }
+  if (localNote) html += `<div class="notice" style="margin-top:${html ? 12 : 18}px">${localNote}</div>`;
+  if (pending.length) {
+    html += `<div class="notice" style="margin-top:${html ? 12 : 18}px">${pending.map(p => `<b>${esc(p.name)}</b> is ${esc(p.reason)}.`).join("<br>")} Let the download finish (or download it again), then Wet Paint picks it up by itself.</div>`;
+  }
+  el.innerHTML = html;
+  const b = $("#btnInstallLocal");
+  if (b) { b.disabled = jobBusy; b.onclick = () => { localNote = ""; run("install-local", "I", {}); }; }
+}
+
+function renderPlainResults(list) {
+  if (!list?.length) return "";
+  const n = list.reduce((a, r) => a + (r.installed || []).length, 0);
+  return `<div class="card"><div class="head"><span class="num">✓</span><h2>Installed from Downloads</h2></div>
+    <div class="kv"><div><b>${n}</b><span>liveries written</span></div><div><b>${list.reduce((a, r) => a + r.files, 0)}</b><span>files written</span></div><div><b>${list.reduce((a, r) => a + r.unchanged, 0)}</b><span>already current</span></div><div><b>${human(list.reduce((a, r) => a + r.bytes, 0))}</b><span>copied</span></div></div>
+    ${list.map(r => `<details><summary>${esc(r.zip)}: ${plural((r.installed || []).length, "livery", "liveries")}${(r.skipped || []).length ? `, ${(r.skipped || []).length} skipped` : ""}</summary><ul class="list">${(r.installed || []).map(i => `<li><span class="sym" style="color:var(--green-bright)">+</span>${esc(i)}</li>`).join("")}${(r.skipped || []).map(i => `<li><span class="sym">·</span>${esc(i)}</li>`).join("")}</ul></details>`).join("")}
+  </div>`;
+}
+
 function renderPacks() {
   const instCreated = S.installed ? new Date(S.installed.created) : null;
+  const wanted = new Set((localReady() ? local.steps : []).map(p => p.path));
   $("#packs").innerHTML = packs.length ? packs.map(p => {
     const older = instCreated && new Date(p.created) < instCreated;
     const same = S.installed && p.release === S.installed.release;
+    const pill = wanted.has(p.path) ? `<span class="pill warn">needed</span>` : same ? `<span class="pill ok">installed</span>` : older ? `<span class="pill">older</span>` : local?.up_to_date ? `<span class="pill">not needed</span>` : `<span class="pill warn">new</span>`;
     return `<button class="opt" role="radio" aria-checked="${selPack && p.path === selPack.path}" data-path="${esc(p.path)}">
       <span class="dot"></span>
       <span class="t"><b>${esc(p.release)} ${p.kind === "full" ? "full pack" : "update"} · ${plural(p.liveries.length, "jet")}</b><span>${esc(p.name)} · ${human(p.bytes)}</span></span>
-      ${older ? `<span class="pill">older</span>` : same ? `<span class="pill ok">installed</span>` : `<span class="pill warn">new</span>`}
+      ${pill}
     </button>`; }).join("")
     : `<div class="empty">No livery packs in your Downloads folder yet.<br><a href="https://flywetboys.com/downloads/index.html" target="_blank">Download this month's pack</a>, then hit Refresh.</div>`;
   $("#packs").querySelectorAll(".opt").forEach(b => b.onclick = () => { selPack = packs.find(p => p.path === b.dataset.path); renderPacks(); });
@@ -411,6 +509,16 @@ function renderPacks() {
 async function choosePack(path, quiet) {
   try {
     const r = await api("/api/pack", { path });
+    if (r.plain) {
+      // An ordinary livery zip: it shows up under Found in your Downloads.
+      clearErr("I");
+      const z = r.plain, work = z.new + z.updates;
+      localNote = work ? "" : `Everything in <b>${esc(z.name)}</b> is already installed.`;
+      $("#manual").open = false;
+      await loadPacks();
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      return;
+    }
     if (!packs.some(p => p.path === r.pack.path)) packs.unshift(r.pack);
     selPack = r.pack; clearErr("I"); renderPacks();
   } catch (e) { if (!quiet) showErr("I", e.message); else renderPacks(); }
@@ -458,8 +566,10 @@ function renderScan(scan, inst) {
 // ------------------------------------------------------------ online updates
 const sumBytes = steps => steps.reduce((n, s) => n + (s.bytes || 0), 0);
 const stepLabel = s => `${s.release} ${s.kind === "full" ? "full library" : "update"}`;
+const isLocal = s => packs.some(p => p.release === s.release && p.kind === s.kind && new Date(p.created).getTime() === new Date(s.created).getTime());
+const dlBytes = steps => steps.reduce((n, s) => n + (isLocal(s) ? 0 : (s.bytes || 0)), 0);
 function stepsList(steps) {
-  return `<ul class="steps">${steps.map(s => `<li><span>${esc(stepLabel(s))} · ${plural((s.liveries || []).length, "jet")}</span><span>${human(s.bytes)}</span></li>`).join("")}</ul>`;
+  return `<ul class="steps">${steps.map(s => `<li><span>${esc(stepLabel(s))} · ${plural((s.liveries || []).length, "jet")}${isLocal(s) ? ` <small>· already in Downloads</small>` : ""}</span><span>${isLocal(s) ? "0 B" : human(s.bytes)}</span></li>`).join("")}</ul>`;
 }
 function renderOnline() {
   const el = $("#online"), plan = S.plan;
@@ -483,7 +593,7 @@ function renderOnline() {
     html = `<p class="big">${plan.first_time && !cheaperThanFull ? "Download the Wet Boys library" : `Release ${esc(plan.latest)} is ready`}</p>
       ${stepsList(plan.steps)}
       <div class="online-actions">
-        <button class="btn primary" data-update="auto">${plan.first_time && !cheaperThanFull ? "Download full library" : "Update now"} · ${human(plan.bytes)}</button>
+        <button class="btn primary" data-update="auto">${plan.first_time && !cheaperThanFull ? "Download full library" : "Update now"} · ${dlBytes(plan.steps) ? human(dlBytes(plan.steps)) : "nothing to download"}</button>
         ${full && cheaperThanFull && plan.first_time ? `<button class="linkbtn" data-update="full">First time? Download the full library instead (${human(full.bytes)})</button>` : ""}
       </div>`;
   } else {
@@ -593,7 +703,8 @@ async function run(kind, t, body) {
     if (job.result?.offline) { S.feed_error = job.result.message; renderOnline(); }
     if (job.result?.plan) { S.plan = job.result.plan; renderHero(); if (job.result.plan.scan && S.installed) renderScan(job.result.plan.scan, null); }
     if (job.result?.scan) { S.last_scan = job.result.scan; renderHero(); renderScan(job.result.scan, job.result.install || updateAsInstall(job.result.update)); }
-    renderPacks();
+    if (job.result?.plain?.length) $("#resI").insertAdjacentHTML("afterbegin", renderPlainResults(job.result.plain));
+    await loadPacks();
   } else if (job.result) { try { renderBuild(job.result); } catch (e) { showErr(t, "Display error: " + e.message); } }
 }
 function setBusy(b) {
@@ -603,6 +714,16 @@ function setBusy(b) {
 
 // ------------------------------------------------------------ lifecycle
 setInterval(() => api("/api/ping", {}).catch(() => {}), 20000);
+// Notice a pack that lands in Downloads while Wet Paint is open (saved from
+// Discord, say): look again when the window comes back into view, and every
+// 20 s while it's showing.
+function relookForPacks(minAge) {
+  if (jobBusy || document.visibilityState !== "visible" || Date.now() - packsLoadedAt < minAge) return;
+  loadPacks();
+}
+addEventListener("focus", () => relookForPacks(3000));
+document.addEventListener("visibilitychange", () => relookForPacks(3000));
+setInterval(() => relookForPacks(20000), 5000);
 addEventListener("pagehide", () => navigator.sendBeacon("/api/bye?t=" + TOKEN));
 
 (async () => {

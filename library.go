@@ -140,9 +140,10 @@ func isJunk(name string) bool {
 // ---------------------------------------------------------------- hash cache
 
 type cacheEntry struct {
-	Size  int64  `json:"s"`
-	MTime int64  `json:"m"`
-	Hash  string `json:"h"`
+	Size  int64   `json:"s"`
+	MTime int64   `json:"m"`
+	Hash  string  `json:"h,omitempty"`
+	CRC   *uint32 `json:"c,omitempty"` // CRC-32, to compare with plain livery zips cheaply
 }
 
 // HashCache remembers file hashes keyed by absolute path + size + mtime,
@@ -179,7 +180,7 @@ func (c *HashCache) get(abs string, fi os.FileInfo) (string, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	e, ok := c.M[abs]
-	if ok && e.Size == fi.Size() && e.MTime == fi.ModTime().UnixNano() {
+	if ok && e.Hash != "" && e.Size == fi.Size() && e.MTime == fi.ModTime().UnixNano() {
 		return e.Hash, true
 	}
 	return "", false
@@ -187,7 +188,37 @@ func (c *HashCache) get(abs string, fi os.FileInfo) (string, bool) {
 
 func (c *HashCache) put(abs string, fi os.FileInfo, h string) {
 	c.mu.Lock()
-	c.M[abs] = cacheEntry{fi.Size(), fi.ModTime().UnixNano(), h}
+	e := c.entry(abs, fi)
+	e.Hash = h
+	c.M[abs] = e
+	c.dirty = true
+	c.mu.Unlock()
+}
+
+// entry returns the cached entry for this exact file version, or a fresh one.
+func (c *HashCache) entry(abs string, fi os.FileInfo) cacheEntry {
+	e, ok := c.M[abs]
+	if !ok || e.Size != fi.Size() || e.MTime != fi.ModTime().UnixNano() {
+		e = cacheEntry{Size: fi.Size(), MTime: fi.ModTime().UnixNano()}
+	}
+	return e
+}
+
+func (c *HashCache) getCRC(abs string, fi os.FileInfo) (uint32, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	e, ok := c.M[abs]
+	if ok && e.CRC != nil && e.Size == fi.Size() && e.MTime == fi.ModTime().UnixNano() {
+		return *e.CRC, true
+	}
+	return 0, false
+}
+
+func (c *HashCache) putCRC(abs string, fi os.FileInfo, crc uint32) {
+	c.mu.Lock()
+	e := c.entry(abs, fi)
+	e.CRC = &crc
+	c.M[abs] = e
 	c.dirty = true
 	c.mu.Unlock()
 }

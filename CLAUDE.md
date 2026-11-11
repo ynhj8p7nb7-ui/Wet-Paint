@@ -19,7 +19,8 @@ malware.
    - downloading or running executables
    Open the UI with `ShellExecute` (default browser). Use direct Win32 calls for dialogs (see `platform_windows.go`).
 2. **Never write outside** `Saved Games\DCS*\Liveries\`, `Saved Games\DCS*\WetPaint\`, `%AppData%\WetPaint\`
-   and `%LocalAppData%\WetPaint\`. Every zip path goes through `safeJoin`, so keep it that way.
+   and `%LocalAppData%\WetPaint\`. Every zip path goes through `safeJoin`, so keep it that way. Never move or
+   delete the pilot's own zips in Downloads.
 3. **Keep the pack format backward compatible.** Packs and `feed.json` carry `format: 1`. Pilots
    will have old packs and old versions of the app. If you must change the format, bump
    `manifestFormat`/`feedFormat` and keep reading the old one.
@@ -42,6 +43,8 @@ malware.
 | `feed.go` | Online updates: `feed.json`, picking the cheapest set of downloads, resumable verified downloads |
 | `aircraft.go` | Finding DCS (Steam and standalone, `dcs_variant.txt`) and checking aircraft folder names |
 | `system.go` | Saved Games folders, finding packs in Downloads, settings |
+| `local.go` | Packs saved by hand (Discord etc.): which ones are needed, installing them, letting Update reuse them |
+| `plain.go` | Ordinary livery zips (no `wetpaint.json`): spotting them, comparing with disk by CRC-32, installing without downgrades |
 | `platform_windows.go` | Known folders, registry and Steam lookups, native Open and Browse dialogs, opening the browser |
 | `platform_other.go` | Mac/Linux versions (Fridge builds on a Mac) |
 | `tools/mkicon` | Writes `rsrc_windows_amd64.syso` (icon, version info, manifest) |
@@ -68,7 +71,8 @@ Mac/Linux: `./build.sh 1.3.0` (Mac also makes `Wet Paint.app`).
 
 Useful environment variables for testing without touching your real DCS:
 `WETPAINT_SAVED_GAMES`, `WETPAINT_DCS_INSTALL`, `WETPAINT_CONFIG`, `WETPAINT_DOWNLOADS`,
-`WETPAINT_FEED`, `WETPAINT_NO_WINDOW=1` (with `WetPaint.exe serve`, which prints the URL).
+`WETPAINT_FEED`, `WETPAINT_PACKS_DIR` (look for hand-downloaded packs only here instead of Downloads/Desktop),
+`WETPAINT_NO_WINDOW=1` (with `WetPaint.exe serve`, which prints the URL).
 
 Before saying a change works: `go vet ./...` and `go test ./...` must pass, and if you touched the UI,
 run `WetPaint.exe serve` and click through it.
